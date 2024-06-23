@@ -1,0 +1,17 @@
+version: "3"
+
+services:
+  bot:
+    image: matrixarcher/solana-smart-signal:latest
+    # ports:
+    #   - "8080:80"
+    volumes:
+      - ./data:/app/data
+    # networks:
+    #   - mynetwork
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - PRIVATE_KEY_BASE58=${PRIVATE_KEY_BASE58}
+      - WALLET_ADDRESS=${WALLET_ADDRESS}
+      - TIMEZONE=${TIMEZONE}
+      - CHANNEL_ID=${CHANNEL_ID}
