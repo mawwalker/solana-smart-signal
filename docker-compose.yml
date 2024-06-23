@@ -5,6 +5,7 @@ services:
     image: matrixarcher/solana-smart-signal:latest
     # ports:
     #   - "8080:80"
+    restart: unless-stopped
     volumes:
       - ./data:/app/data
     # networks:
