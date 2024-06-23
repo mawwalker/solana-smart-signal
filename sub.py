@@ -112,6 +112,11 @@ async def fetch_valid_token():
         token_acquired_time = datetime.now()  
     return token  
   
+async def connet_and_subscribe_task(bot=None):
+    task = asyncio.create_task(connect_and_subscribe(bot))
+    logger.info("Task created.")
+
+
 async def connect_and_subscribe(bot=None):  
     while True:  
         try:  
