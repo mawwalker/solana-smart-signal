@@ -117,7 +117,8 @@ async def connet_and_subscribe_task(bot=None):
     logger.info("Task created.")
 
 
-async def connect_and_subscribe(bot=None):  
+async def connect_and_subscribe(bot=None):
+    await bot.send_message(chat_id=channel_id, text="机器人启动成功！")
     while True:  
         try:  
             token = await fetch_valid_token()

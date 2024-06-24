@@ -133,24 +133,22 @@ def parse_token_info(data, gass_price=None, access_token=None):
     # 仓位状态： 新买，清仓，加仓，减仓。
     if is_open_or_close == 1:
         if event_type == "buy":
-            event_type = "🟢BUY·新买"
+            event_type = "🟢买·新买"
         elif event_type == "sell":
-            event_type = "🔴Sell·清仓"
+            event_type = "🔴卖·清仓"
     else:
         if event_type == "buy":
-            event_type = "🟢BUY·加仓"
+            event_type = "🟢买·加仓"
         elif event_type == "sell":
-            event_type = "🔴Sell·减仓"
+            event_type = "🔴卖·减仓"
             # 如果是减仓，不需要再获取交易历史，也不需要推送消息
             logger.info(f"减仓信号，不推送，交易信息为：{data}")
             return None
     if gass_price is None:
         gass_price = get_gas_price()
     
-    # import pdb; pdb.set_trace()
-    now_time = datetime.now(tz=pytz.timezone(time_zone))
     trade_history = get_trade_history(token_address, access_token)
-    parsed_trade_history = parse_history(trade_history, now_time=now_time)
+    parsed_trade_history = parse_history(trade_history, now_time=local_time)
     # {'all_wallets': 7, 'full_wallets': 1, 'hold_wallets': 1, 'close_wallets': 5}
     
     cost_sol = float(cost_usd) / float(gass_price['eth_usd_price'])
@@ -167,7 +165,7 @@ def parse_token_info(data, gass_price=None, access_token=None):
         'wallet_address': wallet_address,
         'token_address': token_address,
         'token_info': token_info,
-        'time': local_time,
+        'time': local_time.strftime('%Y-%m-%d %H:%M:%S'),
         'trade_history': parsed_trade_history,
         'cost_sol': f"{cost_sol:.3f}",
         'is_open_or_close': is_open_or_close
@@ -265,6 +263,7 @@ def parse_history(history, now_time=None):
     result = {'all_wallets': 0, 'full_wallets': 0, 
               'hold_wallets': 0, 'close_wallets': 0,
               '10min_buys': 0, '10min_close': 0}
+    first_trade_time = now_time
     wallet_info = {}
     recorded_10min_wallets = []
     for trade in history:
@@ -280,6 +279,14 @@ def parse_history(history, now_time=None):
         sold_amount = float(trade['history_sold_amount'])
         trade_time_stamp = trade['timestamp']
         trade_local_time = datetime.fromtimestamp(trade_time_stamp, pytz.timezone(time_zone))
+        
+        # 避免api时间差，过滤掉now_time之后的交易
+        if trade_local_time > now_time:
+            continue
+        
+        if trade_local_time < first_trade_time:
+            first_trade_time = trade_local_time
+        
         trade_time_delta = (now_time - trade_local_time).total_seconds() / 60
         
         if trade_time_delta <= 10.0:
@@ -301,6 +308,7 @@ def parse_history(history, now_time=None):
             result['all_wallets'] += 1
         else:
             continue
+    result['first_trade_time'] = first_trade_time.strftime('%Y-%m-%d %H:%M:%S')
     return result
 if __name__ == '__main__':
     token = get_gmgn_token()
