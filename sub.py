@@ -6,7 +6,7 @@ import websockets
 from loguru import logger
 from datetime import datetime, timedelta  
 from utils.gmgn import get_gmgn_token, get_gas_price, parse_token_info
-from utils.util import generate_markdown
+from utils.util import generate_markdown, filter_token
 from config.conf import channel_id
   
 token_expiry_duration = timedelta(days=28)  
@@ -64,10 +64,12 @@ async def send_message_with_retry(bot, channel_id, message, retries=3, timeout=1
                 await asyncio.sleep(timeout)  # 等待一段时间后重试  
     logger.error(f"Failed to send message after {retries} attempts")
 
-async def send_message(bot, parsed_result, channel_id=channel_id):
+async def send_message(bot, parsed_result, channel_id=channel_id, strong_signal=False):
     try:  
         message = generate_markdown(parsed_result)  
         logger.info(f"Formatted message: {message}")  
+        if strong_signal:
+            await send_message_with_retry(bot, 6573081218, message)
         await send_message_with_retry(bot, channel_id, message)  
     except Exception as e:
         logger.error(f"Unexpected error: {e}")  
@@ -85,7 +87,7 @@ async def listen(ws, bot=None):
             follow_data = message['data'][0]
             token_address = follow_data['token']['address']
             # 过滤掉稳定币的token
-            if "So11111111" in token_address:
+            if "So11111111" in token_address or token_address == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
                 continue
             global gass_price
             parsed_result = parse_token_info(follow_data, gass_price=gass_price, access_token=token)
@@ -94,15 +96,13 @@ async def listen(ws, bot=None):
                 continue
             logger.info(f"parsed_result: {parsed_result}")
             if bot is not None:
-                # try:
-                #     message = generate_markdown(parsed_result)
-                #     logger.info(f"Formated message: {message}")
-                #     await bot.send_message(chat_id=channel_id, text=message, parse_mode="Markdown", disable_web_page_preview=True)
-                # except Exception as e:
-                #     logger.info(f"Error: {e}")
-                #     await bot.send_message(chat_id=channel_id, text="error", parse_mode="Markdown", disable_web_page_preview=True)
-                # logger.info(f"Sent message: {message}")
-                await send_message(bot, parsed_result, channel_id=channel_id)
+                strong_signal = False
+                try:
+                    # 根据条件筛选token，符合金狗条件
+                    strong_signal = filter_token(parsed_result)
+                except Exception as e:
+                    logger.error(f"Filter error: {e}")
+                await send_message(bot, parsed_result, channel_id=channel_id, strong_signal=strong_signal)
                 
                 
 async def fetch_valid_token():

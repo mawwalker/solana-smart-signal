@@ -1,3 +1,5 @@
+from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad
+
 def format_number(num):  
     """  
     将浮点数格式化为一般数字、千(K)、百万(M)、十亿(B)的形式  
@@ -49,18 +51,57 @@ def generate_markdown(parsed_result):
     closed_num_symbol = f"**{trade_history['close_wallets']}**" + ''.join(["🟥" for _ in range(trade_history['close_wallets'])])
     first_trade_time = trade_history['first_trade_time']
 
-    message = f"**{parsed_result['event_type']}**, **{parsed_result['cost_sol']} SOL**  ***{parsed_result['token_info']['symbol']}({parsed_result['token_info']['name']})***\n\n"
+    token_info = parsed_result['token_info']
+    market_cap_str = format_number(token_info['market_cap'])
+
+    message = f"**{parsed_result['event_type']}**, **{parsed_result['cost_sol']} SOL**  ***{token_info['symbol']}({token_info['name']})***\n\n"
     message += f"**交易时间**: {parsed_result['time']}\n"
     message += f"**CA**: `{token_id}`\n"
-    message += f"***市值***: ***${parsed_result['token_info']['market_cap']}*** (${parsed_result['token_info']['price']})\n\n"
+    message += f"***市值***: ***${market_cap_str}*** (${token_info['price']})\n\n"
     message += f"**10分钟内买入钱包**: ***{trade_history['10min_buys']}***; **10分钟内清仓钱包**: ***{trade_history['10min_close']}***\n\n"
     message += f"**第一位买入时间**: ***{first_trade_time}***\n"
     message += f"**买入钱包数**: {total_num_symbol}\n"
     message += f"**全仓数**: {full_num_symbol}\n"
     message += f"**减仓数**: {part_num_symbol}\n"
     message += f"**清仓数**: {closed_num_symbol}\n"
-    message += f"**持有人**: {parsed_result['token_info']['holder_count']}, " + f"**TOP10比例**: {parsed_result['token_info']['top_10_holder_rate']}\n\n"
+    message += f"**持有人**: {token_info['holder_count']}, " + f"**TOP10比例**: {token_info['top_10_holder_rate']}\n\n"
     message += f"**钱包地址**: [{parsed_result['wallet_address']}](https://gmgn.ai/sol/address/{parsed_result['wallet_address']})\n"
     message += f"🔗 一键交易: [Trojan](https://t.me/solana_trojanbot?start=r-marcle253818-{token_id}) | [GMGN](https://t.me/GMGN_sol_bot?start={token_id}) | [Pepe](https://t.me/pepeboost_sol12_bot?start=ref_0nh46x_ca_{token_id}) | [Cash](https://t.me/CashCash_trade_bot?start=ref_132dfe48-7_ca_{token_id}) \n"
-    message += f"🔗 曲线: [GMGN](https://gmgn.ai/sol/token/{parsed_result['token_address']}) \n"
+    message += f"🔗 曲线: [GMGN](https://gmgn.ai/sol/token/{parsed_result['token_address']}) | [Dex](https://dexscreener.com/solana/{token_id}) | [Ave](https://ave.ai/token/{token_id}-solana) \n"
     return message
+
+
+def filter_token(parsed_result):
+    trade_history = parsed_result['trade_history']
+    token_info = parsed_result['token_info']
+    
+    
+    if trade_history['close_wallets'] == 0 and trade_history['10min_buys'] >= 2 and trade_history['10min_close'] == 0 and trade_history['full_wallets'] >= 3:
+        pass
+    else:
+        return False
+    
+    if token_info['market_cap'] >= min_market_cap and token_info['market_cap'] <= max_market_cap:
+        pass
+    else:
+        return False
+    
+    if 'launchpad' in token_info:
+        # 如果过滤掉各种内盘，则设置filter_in_launch_pad为1
+        launchpad_status = token_info['launchpad_status']
+        if launchpad_status == 0 and filter_in_launch_pad:
+            return False
+        elif launchpad_status == 1:
+            # 如果已经发射，过滤一下初始sol数, 以pump为参考, 初始sol数大于30
+            if token_info['pool_initial_reverse'] < 30:
+                return False
+        else:
+            return True
+    
+    # 如果没有launchpad，那需要过滤一下初始sol数, 以pump为参考, 初始sol数大于30
+    if token_info['pool_initial_reverse'] < 30:
+        return False
+    
+    # ... 添加更多过滤条件
+    
+    return True

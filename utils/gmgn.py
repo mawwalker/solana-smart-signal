@@ -110,9 +110,17 @@ def get_token_info(token_address):
     token_info = response.json()
     logger.info(f"gmgn original token info: {token_info}")
     result = {}
-    result['market_cap'] = format_number(float(token_info['data']['token']['market_cap']))
+    result['market_cap'] = float(token_info['data']['token']['market_cap'])
     result['holder_count'] = token_info['data']['token']['holder_count']
     result['top_10_holder_rate'] = f"{(token_info['data']['token']['top_10_holder_rate'] * 100):.2f}%"
+    try: 
+        result['pool_initial_reverse'] = float(token_info['data']['token']['pool_info']['initial_quote_reserve'])
+    except:
+        result['pool_initial_reverse'] = 0
+        
+    if 'launchpad' in token_info['data']['token']:
+        result['launchpad'] = token_info['data']['token']['launchpad']
+        result['launchpad_status'] = int(token_info['data']['token']['launchpad_status'])
     return result
 
 def parse_token_info(data, gass_price=None, access_token=None):
@@ -133,14 +141,14 @@ def parse_token_info(data, gass_price=None, access_token=None):
     # 仓位状态： 新买，清仓，加仓，减仓。
     if is_open_or_close == 1:
         if event_type == "buy":
-            event_type = "🟢买·新买"
+            event_type = "🟢建仓"
         elif event_type == "sell":
-            event_type = "🔴卖·清仓"
+            event_type = "🔴清仓"
     else:
         if event_type == "buy":
-            event_type = "🟢买·加仓"
+            event_type = "🟢加仓"
         elif event_type == "sell":
-            event_type = "🔴卖·减仓"
+            event_type = "🔴减仓"
             # 如果是减仓，不需要再获取交易历史，也不需要推送消息
             logger.info(f"减仓信号，不推送，交易信息为：{data}")
             return None

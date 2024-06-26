@@ -14,19 +14,17 @@ time_zone = os.getenv('TIMEZONE')
 
 channel_id = int(os.getenv('CHANNEL_ID'))
 
+
+max_market_cap = float(os.getenv('MAX_MARKET_CAP', 200000))
+
+min_market_cap = float(os.getenv('MIN_MARKET_CAP', 0))
+
+filter_in_launch_pad = int(os.getenv('FILTER_IN_LAUNCH_PAD', 0))
+
+
 DATABASE_FILE = "data/subscriptions.db"
 
 if os.path.dirname(DATABASE_FILE) and not os.path.exists(os.path.dirname(DATABASE_FILE)):
     os.makedirs(os.path.dirname(DATABASE_FILE))
-    
 
-# 记录钱包购买记录的表结构
-wallet_records_table_schema = '''
-CREATE TABLE IF NOT EXISTS wallet_records (
-    id INTEGER PRIMARY KEY,
-    wallet_address TEXT NOT NULL comment '钱包地址',
-    token_address TEXT NOT NULL comment '代币地址',
-    trade_state INTEGER NOT NULL comment '交易状态, 0新买，1清仓，2加仓，3减仓',
-    cost_sol REAL NOT NULL,
-    date_time TEXT NOT NULL
-        '''
+
