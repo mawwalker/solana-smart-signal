@@ -86,7 +86,10 @@ async def get_wallet_nums(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 access_token = await fetch_valid_token(wallet_address=wallet_address)
             folling_wallets = get_following_wallets(token=access_token)
             following_num = len(folling_wallets)
+            logger.info(f"Wallet {wallet_address} has {following_num} following wallets.")
             await update.message.reply_text(f"Wallet {wallet_address} has {following_num} following wallets.")
+    else:
+        await update.message.reply_text('You are not allowed to use this command.')
 
 
 def run_asyncio_coroutine(coroutine, loop):  
