@@ -26,6 +26,7 @@ time_zone = os.getenv('TIMEZONE')
 channel_id = int(os.getenv('CHANNEL_ID'))
 
 admin_list = os.getenv('ADMIN_LIST').split(',')
+admin_list = [int(admin) for admin in admin_list]
 
 
 max_market_cap = float(os.getenv('MAX_MARKET_CAP', 200000))
