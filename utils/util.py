@@ -1,3 +1,4 @@
+from loguru import logger
 from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad
 
 def format_number(num):  
@@ -72,36 +73,43 @@ def generate_markdown(parsed_result):
 
 
 def filter_token(parsed_result):
+    token_id = parsed_result['token_address']
     trade_history = parsed_result['trade_history']
     token_info = parsed_result['token_info']
     
     
     if trade_history['close_wallets'] == 0 and trade_history['10min_buys'] >= 2 and trade_history['10min_close'] == 0 and trade_history['full_wallets'] >= 3:
-        pass
+        logger.info(f"token: {token_id} passed filter trade fomo. trade stats: {trade_history}")
     else:
+        logger.info(f"token: {token_id} failed filter trade fomo. trade stats: {trade_history}")
         return False
     
     if token_info['market_cap'] >= min_market_cap and token_info['market_cap'] <= max_market_cap:
-        pass
+        logger.info(f"token: {token_id} passed filter market cap. Market cap: {token_info['market_cap']}")
     else:
+        logger.info(f"token: {token_id} failed filter market cap. Market cap: {token_info['market_cap']}")
         return False
     
     if 'launchpad' in token_info:
         # 如果过滤掉各种内盘，则设置filter_in_launch_pad为1
         launchpad_status = token_info['launchpad_status']
         if launchpad_status == 0 and filter_in_launch_pad:
+            logger.info(f"token: {token_id} failed filter launchpad. Launchpad status: {launchpad_status}")
             return False
         elif launchpad_status == 1:
             # 如果已经发射，过滤一下初始sol数, 以pump为参考, 初始sol数大于30
             if token_info['pool_initial_reverse'] < 30:
+                logger.info(f"token: {token_id} failed filter launchpad. It's launched, but Pool initial reverse is small: {token_info['pool_initial_reverse']}")
                 return False
         else:
             return True
     
     # 如果没有launchpad，那需要过滤一下初始sol数, 以pump为参考, 初始sol数大于30
-    if token_info['pool_initial_reverse'] < 30:
+    elif token_info['pool_initial_reverse'] < 30:
         return False
     
     # ... 添加更多过滤条件
     
+    
+    logger.info(f"token: {token_id} passed all filters.")
     return True
