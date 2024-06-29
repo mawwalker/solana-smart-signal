@@ -7,10 +7,9 @@ from loguru import logger
 from datetime import datetime, timedelta  
 from utils.gmgn import get_gmgn_token, get_gas_price, parse_token_info
 from utils.util import generate_markdown, filter_token
-from config.conf import channel_id
+from config.conf import channel_id, access_token_dict, private_key_dict
   
-token_expiry_duration = timedelta(days=28)  
-token = None  
+token_expiry_duration = timedelta(days=20)  
 token_acquired_time = None
 
 # 获取当前的sol价格
@@ -90,7 +89,7 @@ async def listen(ws, bot=None):
             if "So11111111" in token_address or token_address == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
                 continue
             global gass_price
-            parsed_result = parse_token_info(follow_data, gass_price=gass_price, access_token=token)
+            parsed_result = parse_token_info(follow_data, gass_price=gass_price)
             if parsed_result is None:
                 # 解析失败，或者减仓信号，不推送
                 continue
@@ -105,24 +104,27 @@ async def listen(ws, bot=None):
                 await send_message(bot, parsed_result, channel_id=channel_id, strong_signal=strong_signal)
                 
                 
-async def fetch_valid_token():
-    global token, token_acquired_time  
-    if token is None or datetime.now() - token_acquired_time >= token_expiry_duration:  
-        token = get_gmgn_token()
-        token_acquired_time = datetime.now()  
-    return token  
+async def fetch_valid_token(wallet_address):
+    wallet_token = access_token_dict.get(wallet_address, None)
+    private_key = private_key_dict.get(wallet_address, None)
+    if wallet_token is None or datetime.now() - token_acquired_time >= token_expiry_duration:  
+        wallet_token = get_gmgn_token(wallet_address=wallet_address, private_key=private_key)
+        token_acquired_time = datetime.now()
+        access_token_dict[wallet_address] = wallet_token
+    return wallet_token
   
 async def connet_and_subscribe_task(bot=None):
-    task = asyncio.create_task(connect_and_subscribe(bot))
-    logger.info("Task created.")
-
-
-async def connect_and_subscribe(bot=None):
     await bot.send_message(chat_id=channel_id, text="机器人启动成功！")
+    for wallet_address in access_token_dict.keys():
+        task = asyncio.create_task(connect_and_subscribe(wallet_address, bot))
+        logger.info(f"Task created for wallet: {wallet_address}")
+
+
+async def connect_and_subscribe(wallet_address, bot=None):
     while True:  
         try:  
-            token = await fetch_valid_token()
-            websocket_url = f"wss://ws.gmgn.ai/stream?tk={token}"  
+            wallet_token = await fetch_valid_token(wallet_address)
+            websocket_url = f"wss://ws.gmgn.ai/stream?tk={wallet_token}"  
             async with websockets.connect(websocket_url) as ws:  
                 await subscribe(ws)  
   
@@ -130,7 +132,7 @@ async def connect_and_subscribe(bot=None):
                 heartbeat_task = asyncio.create_task(send_heartbeat(ws))  
                 listen_task = asyncio.create_task(listen(ws, bot=bot))  
   
-                # Wait for either task to complete  
+                # Wait for either task to complete
                 done, pending = await asyncio.wait(  
                     [heartbeat_task, listen_task],  
                     return_when=asyncio.FIRST_COMPLETED  
@@ -141,7 +143,8 @@ async def connect_and_subscribe(bot=None):
                     task.cancel()  
         except (websockets.ConnectionClosed, ConnectionRefusedError) as e:  
             logger.info(f"Connection lost: {e}. Reconnecting in 5 seconds...")  
-            await asyncio.sleep(5)  
+            await asyncio.sleep(5)
+
   
 if __name__ == "__main__":  
     asyncio.run(connect_and_subscribe())  

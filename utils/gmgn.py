@@ -10,26 +10,26 @@ import nacl.encoding
 import pytz
 from datetime import datetime, timedelta
 from utils.util import format_number, format_price
-from config.conf import private_key_base58, wallet_address, time_zone
+from config.conf import private_key_base58, wallet_address, time_zone, PRIVATE_KEY_BASE58_LIST, WALLET_ADDRESS_LIST, private_key_dict, access_token_dict
+
+# # 将Base58格式的私钥转换为字节数组  
+# secret_key = base58.b58decode(private_key_base58)
   
-# 将Base58格式的私钥转换为字节数组  
-secret_key = base58.b58decode(private_key_base58)
+# # 验证私钥长度是否正确（64字节）  
+# if len(secret_key) != 64:  
+#     raise ValueError("私钥长度不正确，应该为64字节。")  
   
-# 验证私钥长度是否正确（64字节）  
-if len(secret_key) != 64:  
-    raise ValueError("私钥长度不正确，应该为64字节。")  
+# # 创建Keypair对象  
+# keypair = Keypair.from_base58_string(private_key_base58)  
+# public_key = Keypair.pubkey(keypair)  
   
-# 创建Keypair对象  
-keypair = Keypair.from_base58_string(private_key_base58)  
-public_key = Keypair.pubkey(keypair)  
-  
-if str(public_key) != wallet_address:  
-    raise ValueError(f"私钥和钱包地址不匹配。公钥: {public_key}, 钱包地址: {wallet_address}")  
-else:  
-    print('私钥和钱包地址匹配')  
+# if str(public_key) != wallet_address:  
+#     raise ValueError(f"私钥和钱包地址不匹配。公钥: {public_key}, 钱包地址: {wallet_address}")  
+# else:  
+#     print('私钥和钱包地址匹配')  
   
 # 步骤1：获取登录nonce  
-def get_login_nonce():  
+def get_login_nonce(wallet_address):  
     try:  
         response = requests.get(f'https://gmgn.ai/defi/auth/v1/login_nonce?address={wallet_address}')  
         response.raise_for_status()  
@@ -40,7 +40,7 @@ def get_login_nonce():
         raise  
   
 # 步骤2：生成签名消息  
-def generate_message(nonce):  
+def generate_message(nonce, wallet_address):  
     message = (  
         f"gmgn.ai wants you to sign in with your Solana account:\n{wallet_address}\n\n"  
         f"wallet_sign_statement\nURI: https://gmgn.ai\nVersion: 1\nChain ID: 900\n"  
@@ -50,7 +50,7 @@ def generate_message(nonce):
     return message  
   
 # 步骤3：签名消息  
-def sign_message(message):  
+def sign_message(message, secret_key):  
     message_bytes = message.encode('utf-8')  
     signing_key = nacl.signing.SigningKey(secret_key[:32], encoder=nacl.encoding.RawEncoder)  
     signed_message = signing_key.sign(message_bytes)  
@@ -74,17 +74,20 @@ def login(message, signature):
         print('登录失败:', error)
         return {'code': -1, 'message': '登录失败'}
 
-def get_gmgn_token():
-    nonce = get_login_nonce()
-    message = generate_message(nonce)
-    signature = sign_message(message)
-    result = login(message, signature)
-    if result['code'] == 0:
-        logger.info('登录成功')
-        access_token = result['data']['access_token']
-        return access_token
+def get_gmgn_token(wallet_address, private_key):
+    logger.info(f"Get GMGN token for wallet: {wallet_address}")
+    access_token = None
+    nonce = get_login_nonce(wallet_address)
+    message = generate_message(nonce, wallet_address)
+    signature = sign_message(message, base58.b58decode(private_key))
+    login_result = login(message, signature)
+    if login_result['code'] == 0:
+        access_token = login_result['data']['access_token']
+    if access_token is None:
+        logger.info(f"Failed to get GMGN token for wallet: {wallet_address}")
     else:
-        return None
+        logger.info(f"Successfully get GMGN token for wallet: {wallet_address}")
+    return access_token
     
 def get_gas_price(chain='sol'):
     try:
@@ -123,7 +126,8 @@ def get_token_info(token_address):
         result['launchpad_status'] = int(token_info['data']['token']['launchpad_status'])
     return result
 
-def parse_token_info(data, gass_price=None, access_token=None):
+def parse_token_info(data, gass_price=None):
+    logger.info("Enter parse_token_info")
     event_type = data['event_type']
     wallet_address = data['wallet_address']
     token_address = data['token']['address']
@@ -144,6 +148,8 @@ def parse_token_info(data, gass_price=None, access_token=None):
             event_type = "🟢建仓"
         elif event_type == "sell":
             event_type = "🔴清仓"
+            logger.info(f"清仓信号，不推送，交易信息为：{data}")
+            return None
     else:
         if event_type == "buy":
             event_type = "🟢加仓"
@@ -155,7 +161,22 @@ def parse_token_info(data, gass_price=None, access_token=None):
     if gass_price is None:
         gass_price = get_gas_price()
     
-    trade_history = get_trade_history(token_address, access_token)
+    
+    trade_history = []
+    
+    for self_wallet_address in private_key_dict.keys():
+        access_token = access_token_dict.get(self_wallet_address, None)
+        if access_token is None:
+            access_token = get_gmgn_token(self_wallet_address, private_key_dict[self_wallet_address])
+            access_token_dict[self_wallet_address] = access_token
+        logger.info(f"Get trade history for wallet: {self_wallet_address}; access_token: {access_token}")
+        trade_history_ = get_trade_history(token_address, access_token)
+        logger.info(f"Length of trade history: {len(trade_history_)}")
+        if len(trade_history_) == 0:
+            continue
+        trade_history.extend(trade_history_)
+    
+    # trade_history = get_trade_history(token_address, access_token)
     parsed_trade_history = parse_history(trade_history, now_time=local_time)
     # {'all_wallets': 7, 'full_wallets': 1, 'hold_wallets': 1, 'close_wallets': 5}
     
@@ -178,6 +199,10 @@ def parse_token_info(data, gass_price=None, access_token=None):
         'cost_sol': f"{cost_sol:.3f}",
         'is_open_or_close': is_open_or_close
     }
+    
+    if parsed_trade_history['all_wallets'] < 2 and event_type == '🟢建仓':
+        logger.info(f"Only one wallet, no need to push message: {trade_info}")
+        return None
     
     return trade_info
 
@@ -214,6 +239,24 @@ def unfollow_wallet(wallet_address, token, network='sol'):
         return True
     else:
         return False
+    
+def get_following_wallets(token, network='sol'):
+    url = f"https://gmgn.ai/defi/quotation/v1/follow/{network}/following_wallets?network={network}"
+    header = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+    response = requests.get(url, headers=header)
+    result = response.json()
+    # logger.info(f"Following wallets: {result}")
+    address_list = []
+    if 'code' in result and result['code'] == 0:
+        for wallet in result['data']['followings']:
+            wallet_address = wallet['address']
+            address_list.append(wallet_address)
+    return address_list
+    
+    
     
 def tag_wallet_state(token_address, access_token, network='sol'):
     url = f"https://gmgn.ai/defi/quotation/v1/tokens/tag_wallet_count/{network}/{token_address}"
@@ -258,8 +301,9 @@ def get_trade_history(token_address, token, network='sol', filter_event: str=Non
         # logger.info(f"Length of trade history: {len(history)}")
         if 'next' in result['data']:
             next_cursor = result['data']['next']
-            next_history = get_trade_history(token_address, token, network=network, filter_event=filter_event, cursor=next_cursor)
-            history.extend(next_history)
+            if next_cursor is not None and next_cursor != '':
+                next_history = get_trade_history(token_address, token, network=network, filter_event=filter_event, cursor=next_cursor)
+                history.extend(next_history)
         return history
     else:
         return []
