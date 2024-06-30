@@ -9,7 +9,7 @@ from utils.gmgn import get_gmgn_token, get_gas_price, parse_token_info
 from utils.util import generate_markdown, filter_token
 from config.conf import channel_id, access_token_dict, private_key_dict
   
-token_expiry_duration = timedelta(days=20)  
+token_expiry_duration = timedelta(hours=2)  
 token_acquired_time = None
 
 # 获取当前的sol价格
@@ -105,6 +105,7 @@ async def listen(ws, bot=None):
                 
                 
 async def fetch_valid_token(wallet_address):
+    global token_acquired_time
     wallet_token = access_token_dict.get(wallet_address, None)
     private_key = private_key_dict.get(wallet_address, None)
     if wallet_token is None or datetime.now() - token_acquired_time >= token_expiry_duration:  

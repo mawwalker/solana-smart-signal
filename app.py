@@ -1,3 +1,7 @@
+import os
+from config.conf import time_zone
+os.environ['TZ'] = time_zone
+
 from telegram import Update, Bot
 from telegram import BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes, Updater

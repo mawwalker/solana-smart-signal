@@ -270,6 +270,18 @@ def tag_wallet_state(token_address, access_token, network='sol'):
     if 'code' in result and result['code'] == 0:
         return result['data']
     
+def get_pnl_wallets(token, network='sol'):
+    url = f"https://gmgn.ai/defi/quotation/v1/rank/{network}/wallets/7d?orderby=realized_profit_7d&direction=desc"
+    header = {
+        "Content-Type": "application",
+        "Authorization": f"Bearer {token}"
+    }
+    response = requests.get(url, headers=header)
+    result = response.json()
+    logger.info(f"PNL wallets: {result}")
+    return result
+
+    
 def get_trade_history(token_address, token, network='sol', filter_event: str=None, cursor=None):
     filter_event_ = f"&event={filter_event}" if filter_event is not None else ""
     cursor_ = f"&cursor={quote(cursor)}" if cursor is not None else ""
