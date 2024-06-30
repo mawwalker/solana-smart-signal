@@ -10,23 +10,7 @@ import nacl.encoding
 import pytz
 from datetime import datetime, timedelta
 from utils.util import format_number, format_price
-from config.conf import private_key_base58, wallet_address, time_zone, PRIVATE_KEY_BASE58_LIST, WALLET_ADDRESS_LIST, private_key_dict, access_token_dict
-
-# # 将Base58格式的私钥转换为字节数组  
-# secret_key = base58.b58decode(private_key_base58)
-  
-# # 验证私钥长度是否正确（64字节）  
-# if len(secret_key) != 64:  
-#     raise ValueError("私钥长度不正确，应该为64字节。")  
-  
-# # 创建Keypair对象  
-# keypair = Keypair.from_base58_string(private_key_base58)  
-# public_key = Keypair.pubkey(keypair)  
-  
-# if str(public_key) != wallet_address:  
-#     raise ValueError(f"私钥和钱包地址不匹配。公钥: {public_key}, 钱包地址: {wallet_address}")  
-# else:  
-#     print('私钥和钱包地址匹配')  
+from config.conf import time_zone, private_key_dict, access_token_dict
   
 # 步骤1：获取登录nonce  
 def get_login_nonce(wallet_address):  

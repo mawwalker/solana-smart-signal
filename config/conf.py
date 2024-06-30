@@ -5,8 +5,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 从环境变量中获取私钥和钱包地址
-private_key_base58 = os.getenv('PRIVATE_KEY_BASE58')
-wallet_address = os.getenv('WALLET_ADDRESS')
 
 PRIVATE_KEY_BASE58_LIST = os.getenv('PRIVATE_KEY_BASE58_LIST').split(',')
 WALLET_ADDRESS_LIST = os.getenv('WALLET_ADDRESS_LIST').split(',')
