@@ -1,7 +1,7 @@
 import asyncio
 from loguru import logger
 import datetime
-from trade.dbot import get_wallet_id, dbot_simulate_swap, dbot_swap
+from trade.dbot import get_wallet_id, dbot_simulate_swap, dbot_swap, dbot_simulate_limit_order
 from databases.database import insert_send_trade, get_send_trade
 from config.conf import dbot_token, dbot_wallet_id, trade_monitor
 
@@ -33,7 +33,11 @@ async def send_trade_with_retry(bot, channel_id, parsed_result, retries=3, timeo
                 message = f"成功发送交易, Token ca: {token_address}. 交易金额: {amountOrPercent}."
             else:
                 result = dbot_simulate_swap(dbot_wallet_id, token_address, dbot_token, amountOrPercent)
-                message = f"成功发送模拟交易, Token ca: {token_address}. 交易金额: {amountOrPercent}."
+                
+                # 设置+120%时，出本金的挂单
+                limit_order_result = dbot_simulate_limit_order(dbot_wallet_id, token_address, dbot_token, "sell", token_price_1_2, "up", 0.5, 0.5)
+                
+                message = f"成功发送模拟交易, Token ca: {token_address}. 交易金额: {amountOrPercent}, 已设置+120%时出本金的挂单."
             if result:
                 await insert_send_trade(token_address, 0, trade_monitor, 0, datetime.datetime.now())
                 await bot.send_message(chat_id=channel_id, text=message, parse_mode="Markdown", disable_web_page_preview=True)

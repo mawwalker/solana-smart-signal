@@ -55,6 +55,7 @@ def generate_markdown(parsed_result):
 
     token_info = parsed_result['token_info']
     market_cap_str = format_number(token_info['market_cap'])
+    token_price_str = format_price(token_info['price'])
     
     total_following_wallets = sum(following_wallets_nums.values())
     # fomo度计算
@@ -77,7 +78,7 @@ def generate_markdown(parsed_result):
     message += f"**热度**: {fomo_symbol}\n"
     message += f"**交易时间**: {parsed_result['time']}\n"
     message += f"**CA**: `{token_id}`\n"
-    message += f"***市值***: ***${market_cap_str}*** (${token_info['price']})\n\n"
+    message += f"***市值***: ***${market_cap_str}*** (${token_price_str})\n\n"
     message += f"**10分钟内买入钱包**: ***{trade_history['10min_buys']}***; **10分钟内清仓钱包**: ***{trade_history['10min_close']}***\n\n"
     message += f"**第一位买入时间**: ***{first_trade_time}***\n"
     message += f"🟩全仓 | 🟨减仓 | 🟥清仓 \n\n"

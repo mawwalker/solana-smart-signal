@@ -95,3 +95,42 @@ def dbot_simulate_swap(wallet_id, token_address, dbot_token, amountOrPercent=0.2
         logger.error(f"Simulate swap error: {result}")
         return False
     return True
+
+def dbot_simulate_limit_order(wallet_id, token_address, dbot_token, trade_type, trigger_price_usd, trigger_direction, 
+                              currencyAmountUI, maxSlippage, priorityFee="", chain="solana"):
+    
+    url = f"https://api-bot-v1.dbotx.com/simulator/limit_orders"
+    data = { 
+        "chain": chain, 
+        "pair": token_address, 
+        "walletId": wallet_id, 
+        "settings": [ 
+            { 
+                "enabled": True, 
+                "tradeType": trade_type, 
+                "triggerPriceUsd": f"{trigger_price_usd}", 
+                "triggerDirection": trigger_direction, 
+                "priorityFee": priorityFee, 
+                "currencyAmountUI": currencyAmountUI, 
+                "expireDelta": 360000000, 
+                "maxSlippage": maxSlippage,
+            } 
+        ] 
+    }
+    header = {
+        "Content-Type": "application/json",
+        "X-API-KEY": dbot_token
+    }
+    
+    result = requests.post(url, headers=header, json=data)
+    
+    result = result.json()
+    
+    logger.info(f"Simulate limit order result: {result}")
+    
+    err = result.get("err", True)
+    
+    if err:
+        logger.error(f"Simulate limit order error: {result}")
+        return False
+    return True

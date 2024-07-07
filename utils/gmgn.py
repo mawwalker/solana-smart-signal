@@ -9,7 +9,6 @@ import nacl.signing
 import nacl.encoding
 import pytz
 from datetime import datetime, timedelta
-from utils.util import format_number, format_price
 from config.conf import *
   
 # 步骤1：获取登录nonce  
@@ -180,7 +179,7 @@ def parse_token_info(data, gass_price=None):
     token_info['address'] = token_address
     token_info['symbol'] = token_symbol
     token_info['name'] = token_name
-    token_info['price'] = format_price(float(token_price))
+    token_info['price'] = float(token_price)
     
     # 避免交易监听与交易历史api时间差，导致的市值不准确，这里重新计算市值
     token_info['market_cap'] = float(token_price) * token_info['total_supply']
