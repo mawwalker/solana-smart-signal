@@ -11,6 +11,7 @@ from loguru import logger
 from sub import connect_and_subscribe, connet_and_subscribe_task
 from utils.gmgn import follow_wallet, unfollow_wallet, get_following_wallets
 from sub import fetch_valid_token
+from databases.database import create_tables
 from config.conf import bot_token, private_key_dict, access_token_dict, admin_list
 
 ALLOWED_USER_IDS = admin_list
@@ -119,6 +120,9 @@ def main():
     
     result = loop.run_until_complete(application.bot.set_my_commands(commands))
     logger.info(f"Set commands result: {result}")
+    
+    database_result = loop.run_until_complete(create_tables())
+    logger.info(f"Create tables result: {database_result}")
     
     loop.run_until_complete(connet_and_subscribe_task(application.bot))
     

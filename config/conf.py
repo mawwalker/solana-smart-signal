@@ -11,11 +11,13 @@ WALLET_ADDRESS_LIST = os.getenv('WALLET_ADDRESS_LIST').split(',')
 
 access_token_dict = {}
 private_key_dict = {}
+following_wallets_nums = {}
 
 for private_key, wallet_address in zip(PRIVATE_KEY_BASE58_LIST, WALLET_ADDRESS_LIST):
     access_token_dict[wallet_address] = None
     private_key_dict[wallet_address] = private_key
-    
+    following_wallets_nums[wallet_address] = 0
+
 
 bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
 
@@ -35,8 +37,17 @@ max_ceate_time = int(os.getenv('MAX_CEATE_TIME', 0))
 
 filter_in_launch_pad = int(os.getenv('FILTER_IN_LAUNCH_PAD', 0))
 
+# 是否重复推送
+repeat_push = int(os.getenv('REPEAT_PUSH', 1))
 
-DATABASE_FILE = "data/subscriptions.db"
+# 发送交易，-1表示不发送，1表示模拟发送，0表示真实发送
+trade_monitor = int(os.getenv('TRADE_TYPE', -1))
+
+
+dbot_token = os.getenv('DBOT_TOKEN')
+dbot_wallet_id = os.getenv('DBOT_WALLET_ID', None)
+
+DATABASE_FILE = "data/data.db"
 
 if os.path.dirname(DATABASE_FILE) and not os.path.exists(os.path.dirname(DATABASE_FILE)):
     os.makedirs(os.path.dirname(DATABASE_FILE))

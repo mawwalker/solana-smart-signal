@@ -1,5 +1,5 @@
 from loguru import logger
-from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad
+from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad, following_wallets_nums
 
 def format_number(num):  
     """  
@@ -46,25 +46,46 @@ def generate_markdown(parsed_result):
     token_id = parsed_result['token_address']
     # {'all_wallets': 7, 'full_wallets': 1, 'hold_wallets': 1, 'close_wallets': 5}
     # 总购买🟦, 全仓符号🟩， 减仓符号🟨, 清仓符号🟥
-    total_num_symbol = f"**{trade_history['all_wallets']}**" + ''.join(["🟦" for _ in range(trade_history['all_wallets'])])
-    full_num_symbol = f"**{trade_history['full_wallets']}**" + ''.join(["🟩" for _ in range(trade_history['full_wallets'])])
-    part_num_symbol = f"**{trade_history['hold_wallets']}**" + ''.join(["🟨" for _ in range(trade_history['hold_wallets'])])
-    closed_num_symbol = f"**{trade_history['close_wallets']}**" + ''.join(["🟥" for _ in range(trade_history['close_wallets'])])
+    total_num_symbol = f"***{trade_history['all_wallets']}*** | " + ''.join(["🟩" for _ in range(trade_history['full_wallets'])]) + ''.join(["🟨" for _ in range(trade_history['hold_wallets'])]) + ''.join(["🟥" for _ in range(trade_history['close_wallets'])])
+    # total_num_symbol = f"**{trade_history['all_wallets']}**" + ''.join(["🟦" for _ in range(trade_history['all_wallets'])])
+    # full_num_symbol = f"**{trade_history['full_wallets']}**" + ''.join(["🟩" for _ in range(trade_history['full_wallets'])])
+    # part_num_symbol = f"**{trade_history['hold_wallets']}**" + ''.join(["🟨" for _ in range(trade_history['hold_wallets'])])
+    # closed_num_symbol = f"**{trade_history['close_wallets']}**" + ''.join(["🟥" for _ in range(trade_history['close_wallets'])])
     first_trade_time = trade_history['first_trade_time']
 
     token_info = parsed_result['token_info']
     market_cap_str = format_number(token_info['market_cap'])
+    
+    total_following_wallets = sum(following_wallets_nums.values())
+    # fomo度计算
+    fomo = trade_history['10min_buys'] / trade_history['all_wallets'] + \
+        trade_history['all_wallets'] / total_following_wallets + \
+            trade_history['full_wallets'] / trade_history['all_wallets'] + \
+                trade_history['hold_wallets'] / trade_history['all_wallets'] + \
+                    - trade_history['close_wallets'] / trade_history['all_wallets']
+
+    # 根据fomo度，输出热度符🔥，将fomo映射到0,10区间，向上取整
+    fomo_range = int(round(fomo * 10))
+    if fomo_range < 0:
+        fomo_range = 1
+    if fomo_range > 10:
+        fomo_range = 10
+    
+    fomo_symbol = ''.join(["🔥" for _ in range(fomo_range)])
+    
 
     message = f"**{parsed_result['event_type']}**, **{parsed_result['cost_sol']} SOL**  ***{token_info['symbol']}({token_info['name']})***\n\n"
+    message += f"**热度**: {fomo_symbol}\n"
     message += f"**交易时间**: {parsed_result['time']}\n"
     message += f"**CA**: `{token_id}`\n"
     message += f"***市值***: ***${market_cap_str}*** (${token_info['price']})\n\n"
     message += f"**10分钟内买入钱包**: ***{trade_history['10min_buys']}***; **10分钟内清仓钱包**: ***{trade_history['10min_close']}***\n\n"
     message += f"**第一位买入时间**: ***{first_trade_time}***\n"
+    message += f"🟩全仓 | 🟨减仓 | 🟥清仓 \n\n"
     message += f"**买入钱包数**: {total_num_symbol}\n"
-    message += f"**全仓数**: {full_num_symbol}\n"
-    message += f"**减仓数**: {part_num_symbol}\n"
-    message += f"**清仓数**: {closed_num_symbol}\n"
+    # message += f"**全仓数**: {full_num_symbol}\n"
+    # message += f"**减仓数**: {part_num_symbol}\n"
+    # message += f"**清仓数**: {closed_num_symbol}\n"
     message += f"**持有人**: {token_info['holder_count']}, " + f"**TOP10比例**: {token_info['top_10_holder_rate']}\n\n"
     message += f"**钱包地址**: [{parsed_result['wallet_address']}](https://gmgn.ai/sol/address/{parsed_result['wallet_address']})\n"
     message += f"🔗 一键交易: [Trojan](https://t.me/solana_trojanbot?start=r-marcle253818-{token_id}) | [GMGN](https://t.me/GMGN_sol_bot?start={token_id}) | [Pepe](https://t.me/pepeboost_sol12_bot?start=ref_0nh46x_ca_{token_id}) | [Cash](https://t.me/CashCash_trade_bot?start=ref_132dfe48-7_ca_{token_id}) \n"

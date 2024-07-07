@@ -360,13 +360,19 @@ def parse_history(history, now_time=None):
     '''
     result = {'all_wallets': 0, 'full_wallets': 0, 
               'hold_wallets': 0, 'close_wallets': 0,
-              '10min_buys': 0, '10min_close': 0}
+              '10min_buys': 0, '10min_close': 0, 'total_trades': len(history),
+              'total_buy': 0, 'total_sell': 0}
     first_trade_time = now_time
     wallet_info = {}
     recorded_10min_wallets = []
     for trade in history:
         wallet_address = trade['maker']
         event = trade['event']
+        if event == 'buy':
+            result['total_buy'] += 1
+        elif event == 'sell':
+            result['total_sell'] += 1
+        
         is_open_or_close = trade['is_open_or_close']
         if is_open_or_close is None or is_open_or_close == '':
             is_open_or_close = 0
