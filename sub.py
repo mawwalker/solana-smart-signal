@@ -89,7 +89,7 @@ async def send_message(bot, parsed_result, channel_id=channel_id):
         logger.info(f"Formatted message: {message}")  
         
         if trade_monitor != -1:
-            await send_trade_with_retry(bot, channel_id, token_address)
+            await send_trade_with_retry(bot, channel_id, parsed_result)
         await send_message_with_retry(bot, channel_id, message, token_address)  
     except Exception as e:
         logger.error(f"Unexpected error: {e}")  

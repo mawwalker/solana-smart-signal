@@ -59,15 +59,14 @@ def generate_markdown(parsed_result):
     total_following_wallets = sum(following_wallets_nums.values())
     # fomo度计算
     fomo = trade_history['10min_buys'] / trade_history['all_wallets'] + \
-        trade_history['all_wallets'] / total_following_wallets + \
+        min(trade_history['all_wallets'] / 5, 3) + \
             trade_history['full_wallets'] / trade_history['all_wallets'] + \
                 trade_history['hold_wallets'] / trade_history['all_wallets'] + \
                     - trade_history['close_wallets'] / trade_history['all_wallets']
 
     # 根据fomo度，输出热度符🔥，将fomo映射到0,10区间，向上取整
-    fomo_range = int(round(fomo * 10))
-    if fomo_range < 0:
-        fomo_range = 1
+    fomo_range = int(round(fomo))
+    fomo_range = max(1, fomo_range)
     if fomo_range > 10:
         fomo_range = 10
     
