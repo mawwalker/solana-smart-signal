@@ -10,7 +10,7 @@ import nacl.encoding
 import pytz
 from datetime import datetime, timedelta
 from utils.util import format_number, format_price
-from config.conf import time_zone, private_key_dict, access_token_dict
+from config.conf import *
   
 # 步骤1：获取登录nonce  
 def get_login_nonce(wallet_address):  
@@ -97,9 +97,19 @@ def get_token_info(token_address):
     token_info = response.json()
     logger.info(f"gmgn original token info: {token_info}")
     result = {}
-    result['market_cap'] = float(token_info['data']['token']['market_cap'])
+    result['total_supply'] = int(token_info['data']['token']['total_supply'])
+    try:
+        creation_timestamp = token_info['data']['token']['creation_timestamp']
+        open_timestamp = token_info['data']['token']['open_timestamp']
+        result['creation_timestamp'] = int(creation_timestamp) if creation_timestamp is not None else int(open_timestamp)
+    except Exception as e:
+        result['creation_timestamp'] = 0
     result['holder_count'] = token_info['data']['token']['holder_count']
-    result['top_10_holder_rate'] = f"{(token_info['data']['token']['top_10_holder_rate'] * 100):.2f}%"
+    try:
+        top_10_holder_rate = float(token_info['data']['token']['top_10_holder_rate']) * 100
+    except Exception as e:
+        top_10_holder_rate = 0.0
+    result['top_10_holder_rate'] = f"{top_10_holder_rate:.2f}%"
     try: 
         result['pool_initial_reverse'] = float(token_info['data']['token']['pool_info']['initial_quote_reserve'])
     except:
@@ -153,7 +163,7 @@ def parse_token_info(data, gass_price=None):
         if access_token is None:
             access_token = get_gmgn_token(self_wallet_address, private_key_dict[self_wallet_address])
             access_token_dict[self_wallet_address] = access_token
-        logger.info(f"Get trade history for wallet: {self_wallet_address}; access_token: {access_token}")
+        logger.info(f"Get trade history for wallet: {self_wallet_address}")
         trade_history_ = get_trade_history(token_address, access_token)
         logger.info(f"Length of trade history: {len(trade_history_)}")
         if len(trade_history_) == 0:
@@ -171,8 +181,15 @@ def parse_token_info(data, gass_price=None):
     token_info['symbol'] = token_symbol
     token_info['name'] = token_name
     token_info['price'] = format_price(float(token_price))
-    token_info['price_change'] = price_change
     
+    # 避免交易监听与交易历史api时间差，导致的市值不准确，这里重新计算市值
+    token_info['market_cap'] = float(token_price) * token_info['total_supply']
+    token_info['price_change'] = price_change
+    if token_info['creation_timestamp'] == 0:
+        token_info['create_time'] = '未知'
+    token_info['create_time'] = datetime.fromtimestamp(token_info['creation_timestamp'], pytz.timezone(time_zone)).strftime('%Y-%m-%d %H:%M:%S')
+
+
     trade_info = {
         'event_type': event_type,
         'wallet_address': wallet_address,
@@ -184,11 +201,44 @@ def parse_token_info(data, gass_price=None):
         'is_open_or_close': is_open_or_close
     }
     
-    if parsed_trade_history['all_wallets'] < 2 and event_type == '🟢建仓':
-        logger.info(f"Only one wallet, no need to push message: {trade_info}")
-        return None
+    filter_result = True
+    if if_filter:
+        filter_result = token_filter(trade_info, local_time)
     
-    return trade_info
+    
+    if filter_result:
+        return trade_info
+    else:
+        return None
+
+
+def token_filter(token_trade_info, now_time):
+    event_type = token_trade_info['event_type']
+    token_info = token_trade_info['token_info']
+    trade_history = token_trade_info['trade_history']
+    market_cap = token_info['market_cap']
+    token_create_time = datetime.strptime(token_info['create_time'], '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone))
+    
+    # 过滤市值范围
+    if market_cap < min_market_cap:
+        logger.info(f"Market cap out of range: {market_cap}")
+        return False
+    
+    if max_market_cap >0 and market_cap > max_market_cap:
+        logger.info(f"Market cap out of range: {market_cap}")
+        return False
+    
+    # 过滤创建时间，旧盘不推送
+    if max_ceate_time > 0 and (now_time - token_create_time).total_seconds() / 60 > max_ceate_time:
+        logger.info(f"Token too old: {token_create_time}")
+        return False
+    
+    if trade_history['all_wallets'] < min_buy_wallets:
+        logger.info(f"Buy wallets less than {min_buy_wallets}, not push message")
+        return False
+    
+    return True
+
 
 def follow_wallet(wallet_address, token, network='sol'):
     url = f"https://gmgn.ai/defi/quotation/v1/follow/sol/follow_wallet"

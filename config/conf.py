@@ -26,10 +26,12 @@ channel_id = int(os.getenv('CHANNEL_ID'))
 admin_list = os.getenv('ADMIN_LIST').split(',')
 admin_list = [int(admin) for admin in admin_list]
 
-
-max_market_cap = float(os.getenv('MAX_MARKET_CAP', 200000))
-
+if_filter = int(os.getenv('IF_FILTER', 1))
+min_buy_wallets = int(os.getenv('MIN_BUY_WALLETS', 2))
+max_market_cap = float(os.getenv('MAX_MARKET_CAP', 0))
 min_market_cap = float(os.getenv('MIN_MARKET_CAP', 0))
+# 过滤创建时间，单位min
+max_ceate_time = int(os.getenv('MAX_CEATE_TIME', 0))
 
 filter_in_launch_pad = int(os.getenv('FILTER_IN_LAUNCH_PAD', 0))
 

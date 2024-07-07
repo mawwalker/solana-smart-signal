@@ -15,7 +15,7 @@ from config.conf import bot_token, private_key_dict, access_token_dict, admin_li
 
 ALLOWED_USER_IDS = admin_list
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"User {update.effective_user.id} started the bot.")
     if update.effective_user.id in ALLOWED_USER_IDS:  
         await update.message.reply_text('Welcome to the Wallet Subscription Bot! Use /add, /list, /rm commands.')  

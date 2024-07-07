@@ -5,7 +5,7 @@ import uuid
 import websockets
 from loguru import logger
 from datetime import datetime, timedelta  
-from utils.gmgn import get_gmgn_token, get_gas_price, parse_token_info
+from utils.gmgn import get_gmgn_token, get_gas_price, parse_token_info, get_following_wallets
 from utils.util import generate_markdown, filter_token
 from config.conf import channel_id, access_token_dict, private_key_dict
   
@@ -28,7 +28,7 @@ async def subscribe(ws):
     await ws.send(json.dumps(payload))  
     logger.info(f"Subscribed with session ID: {session_id}")  
   
-async def send_heartbeat(ws):  
+async def send_heartbeat(ws, access_token=None):
     ping_payload = {  
         "action": "ping"  
     }  
@@ -36,6 +36,11 @@ async def send_heartbeat(ws):
         try:  
             await ws.send(json.dumps(ping_payload))  
             logger.info("Sent heartbeat")
+            if access_token is not None:
+                # 只是为了保证token不过期
+                following_wallets = get_following_wallets(token=access_token)
+                logger.info(f"Sent heartbeat, following wallets nums: {len(following_wallets)}")
+                # logger.info(f"Following wallets: {following_wallets}")
         except websockets.ConnectionClosed:  
             logger.info("Connection closed, stopping heartbeat")  
             break  
@@ -130,7 +135,7 @@ async def connect_and_subscribe(wallet_address, bot=None):
                 await subscribe(ws)  
   
                 # Create tasks for heartbeat and listening  
-                heartbeat_task = asyncio.create_task(send_heartbeat(ws))  
+                heartbeat_task = asyncio.create_task(send_heartbeat(ws, wallet_token))  
                 listen_task = asyncio.create_task(listen(ws, bot=bot))  
   
                 # Wait for either task to complete
