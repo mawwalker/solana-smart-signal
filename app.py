@@ -36,7 +36,7 @@ async def add_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 access_token = access_token_dict.get(self_wallet_address, None)
                 if access_token is None:
                     access_token = await fetch_valid_token(wallet_address=self_wallet_address)
-                folling_wallets = get_following_wallets(token=access_token)
+                folling_wallets = get_following_wallets(token=access_token, self_wallet_address=self_wallet_address)
                 if wallet_address in folling_wallets:
                     await update.message.reply_text("Wallet already added. You don't need to add it again.")
                     return
@@ -45,7 +45,7 @@ async def add_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                     not_full_wallet = self_wallet_address
 
             access_token = access_token_dict.get(not_full_wallet, None)
-            result = follow_wallet(wallet_address=wallet_address, token=access_token)
+            result = follow_wallet(wallet_address=wallet_address, self_wallet_address=not_full_wallet, token=access_token)
             await update.message.reply_text(f"Wallet subscribed successfully to wallet address: {not_full_wallet}" if result else "Failed to add wallet.")
         else:  
             await update.message.reply_text('Usage: /add <wallet_address>')  
@@ -65,7 +65,7 @@ async def delete_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 access_token = access_token_dict.get(self_wallet_address, None)
                 if access_token is None:
                     access_token = await fetch_valid_token(wallet_address=self_wallet_address)
-                folling_wallets = get_following_wallets(token=access_token)
+                folling_wallets = get_following_wallets(token=access_token, self_wallet_address=self_wallet_address)
                 if wallet_address in folling_wallets:
                     followed_by_wallet = self_wallet_address
                     break
@@ -74,7 +74,7 @@ async def delete_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 return
             access_token = access_token_dict.get(followed_by_wallet, None)
             
-            result = unfollow_wallet(wallet_address=wallet_address, token=access_token)
+            result = unfollow_wallet(wallet_address=wallet_address, self_wallet_address=followed_by_wallet, token=access_token)
             await update.message.reply_text(f"Wallet removed successfully from wallet address: {followed_by_wallet}" if result else "Failed to remove wallet.")
         else:  
             await update.message.reply_text('Usage: /rm <wallet_address>')  
@@ -89,7 +89,7 @@ async def get_wallet_nums(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             access_token = access_token_dict.get(wallet_address, None)
             if access_token is None:
                 access_token = await fetch_valid_token(wallet_address=wallet_address)
-            folling_wallets = get_following_wallets(token=access_token)
+            folling_wallets = get_following_wallets(token=access_token, self_wallet_address=wallet_address)
             following_num = len(folling_wallets)
             logger.info(f"Wallet {wallet_address} has {following_num} following wallets.")
             await update.message.reply_text(f"Wallet {wallet_address} has {following_num} following wallets.")

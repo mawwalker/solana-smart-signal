@@ -1,5 +1,5 @@
 from loguru import logger
-from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad, following_wallets_nums
+from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad, following_wallets_nums, filter_dex_socials, filter_dex_ads
 
 def format_number(num):  
     """  
@@ -46,14 +46,35 @@ def generate_markdown(parsed_result):
     token_id = parsed_result['token_address']
     # {'all_wallets': 7, 'full_wallets': 1, 'hold_wallets': 1, 'close_wallets': 5}
     # 总购买🟦, 全仓符号🟩， 减仓符号🟨, 清仓符号🟥
-    total_num_symbol = f"***{trade_history['all_wallets']}*** | " + ''.join(["🟩" for _ in range(trade_history['full_wallets'])]) + ''.join(["🟨" for _ in range(trade_history['hold_wallets'])]) + ''.join(["🟥" for _ in range(trade_history['close_wallets'])])
-    # total_num_symbol = f"**{trade_history['all_wallets']}**" + ''.join(["🟦" for _ in range(trade_history['all_wallets'])])
-    # full_num_symbol = f"**{trade_history['full_wallets']}**" + ''.join(["🟩" for _ in range(trade_history['full_wallets'])])
-    # part_num_symbol = f"**{trade_history['hold_wallets']}**" + ''.join(["🟨" for _ in range(trade_history['hold_wallets'])])
-    # closed_num_symbol = f"**{trade_history['close_wallets']}**" + ''.join(["🟥" for _ in range(trade_history['close_wallets'])])
+    total_num_symbol = f"***{trade_history['all_wallets']}*** | " + \
+        ''.join(["🟩" for _ in range(trade_history['full_wallets'])]) + \
+            ''.join(["🟨" for _ in range(trade_history['hold_wallets'])]) + \
+                ''.join(["🟥" for _ in range(trade_history['close_wallets'])])
     first_trade_time = trade_history['first_trade_time']
 
     token_info = parsed_result['token_info']
+    create_time = token_info['create_time']
+    # minutes
+    delta_time = parsed_result['delta_time']
+    is_new = False
+    if delta_time <= 4 * 60:
+        is_new = True
+    new_str = f"🆕" if is_new else ""
+    
+    dexscr_ad = token_info['dexscr_ad']
+    dexscr_update_link = token_info['dexscr_update_link']
+    dex_str = ""
+    if dexscr_ad:
+        dex_str += f"***Dex广告👍*** | "
+    else:
+        dex_str += f"***Dex广告❌*** | "
+    if dexscr_update_link:
+        dex_str += f"***Dex社交媒体👍*** | "
+    else:
+        dex_str += f"***Dex社交媒体❌*** | "
+    if dex_str != "":
+        dex_str = dex_str[:-2] + "\n\n"
+    
     market_cap_str = format_number(token_info['market_cap'])
     token_price_str = format_price(token_info['price'])
     
@@ -74,18 +95,16 @@ def generate_markdown(parsed_result):
     fomo_symbol = ''.join(["🔥" for _ in range(fomo_range)])
     
 
-    message = f"**{parsed_result['event_type']}**, **{parsed_result['cost_sol']} SOL**  ***{token_info['symbol']}({token_info['name']})***\n\n"
+    message = f"***{new_str}*** **{parsed_result['event_type']}**, **{parsed_result['cost_sol']} SOL**  ***{token_info['symbol']}({token_info['name']})***\n\n"
     message += f"**热度**: {fomo_symbol}\n"
     message += f"**交易时间**: {parsed_result['time']}\n"
     message += f"**CA**: `{token_id}`\n"
     message += f"***市值***: ***${market_cap_str}*** (${token_price_str})\n\n"
-    message += f"**10分钟内买入钱包**: ***{trade_history['10min_buys']}***; **10分钟内清仓钱包**: ***{trade_history['10min_close']}***\n\n"
+    message += dex_str
+    message += f"**3min买**: {trade_history['3min_buys']}; **10min买**: ***{trade_history['10min_buys']}***; \n\n"
     message += f"**第一位买入时间**: ***{first_trade_time}***\n"
     message += f"🟩全仓 | 🟨减仓 | 🟥清仓 \n\n"
     message += f"**买入钱包数**: {total_num_symbol}\n"
-    # message += f"**全仓数**: {full_num_symbol}\n"
-    # message += f"**减仓数**: {part_num_symbol}\n"
-    # message += f"**清仓数**: {closed_num_symbol}\n"
     message += f"**持有人**: {token_info['holder_count']}, " + f"**TOP10比例**: {token_info['top_10_holder_rate']}\n\n"
     message += f"**钱包地址**: [{parsed_result['wallet_address']}](https://gmgn.ai/sol/address/{parsed_result['wallet_address']})\n"
     message += f"🔗 一键交易: [Trojan](https://t.me/solana_trojanbot?start=r-marcle253818-{token_id}) | [GMGN](https://t.me/GMGN_sol_bot?start={token_id}) | [Pepe](https://t.me/pepeboost_sol12_bot?start=ref_0nh46x_ca_{token_id}) | [Cash](https://t.me/CashCash_trade_bot?start=ref_132dfe48-7_ca_{token_id}) \n"
@@ -110,6 +129,21 @@ def filter_token(parsed_result):
     else:
         logger.info(f"token: {token_id} failed filter market cap. Market cap: {token_info['market_cap']}")
         return False
+    
+    if filter_dex_socials:
+        if token_info['dexscr_update_link']:
+            logger.info(f"token: {token_id} passed filter dex socials. Dex socials: {token_info['dexscr_update_link']}")
+        else:
+            logger.info(f"token: {token_id} failed filter dex socials. Dex socials: {token_info['dexscr_update_link']}")
+            return False
+    
+    if filter_dex_ads:
+        if token_info['dexscr_ad']:
+            logger.info(f"token: {token_id} passed filter dex ads. Dex ads: {token_info['dexscr_ad']}")
+        else:
+            logger.info(f"token: {token_id} failed filter dex ads. Dex ads: {token_info['dexscr_ad']}")
+            return False
+    
     
     if 'launchpad' in token_info:
         # 如果过滤掉各种内盘，则设置filter_in_launch_pad为1

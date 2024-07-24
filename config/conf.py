@@ -35,6 +35,9 @@ min_market_cap = float(os.getenv('MIN_MARKET_CAP', 0))
 # 过滤创建时间，单位min
 max_ceate_time = int(os.getenv('MAX_CEATE_TIME', 0))
 
+filter_dex_socials = int(os.getenv('FILTER_DEX_SOCIALS', 0))
+filter_dex_ads = int(os.getenv('FILTER_DEX_ADS', 0))
+
 filter_in_launch_pad = int(os.getenv('FILTER_IN_LAUNCH_PAD', 0))
 
 # 是否重复推送

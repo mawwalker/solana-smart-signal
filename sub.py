@@ -3,6 +3,7 @@ import json
 import asyncio
 import uuid  
 import websockets
+import traceback
 from loguru import logger
 from datetime import datetime, timedelta
 from utils.gmgn import get_gmgn_token, get_gas_price, parse_token_info, get_following_wallets
@@ -37,18 +38,14 @@ async def send_heartbeat(ws, wallet_address=None, access_token=None):
     }
     global following_wallets_nums
     while True:  
-        try:  
-            await ws.send(json.dumps(ping_payload))  
-            logger.info("Sent heartbeat")
-            if access_token is not None:
-                # 只是为了保证token不过期
-                following_wallets = get_following_wallets(token=access_token)
-                following_wallets_nums[wallet_address] = len(following_wallets)
-                logger.info(f"Sent heartbeat, following wallets nums: {len(following_wallets)}")
-                # logger.info(f"Following wallets: {following_wallets}")
-        except websockets.ConnectionClosed:  
-            logger.info("Connection closed, stopping heartbeat")  
-            break  
+        await ws.send(json.dumps(ping_payload))  
+        logger.info("Sent heartbeat")
+        # if access_token is not None:
+        #     # 只是为了保证token不过期
+        #     following_wallets = get_following_wallets(token=access_token, self_wallet_address=wallet_address)
+        #     following_wallets_nums[wallet_address] = len(following_wallets)
+        #     logger.info(f"Sent heartbeat, following wallets nums: {len(following_wallets)}")
+            # logger.info(f"Following wallets: {following_wallets}") 
         await asyncio.sleep(30)
         
 async def update_gas_price():
@@ -93,6 +90,7 @@ async def send_message(bot, parsed_result, channel_id=channel_id):
         await send_message_with_retry(bot, channel_id, message, token_address)  
     except Exception as e:
         logger.error(f"Unexpected error: {e}")  
+        traceback.print_exc()
 
 async def listen(ws, bot=None):
     async for message in ws:
@@ -120,6 +118,7 @@ async def listen(ws, bot=None):
                     await send_message(bot, parsed_result, channel_id=channel_id)
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            traceback.print_exc()
                 
                 
 async def fetch_valid_token(wallet_address):
@@ -138,6 +137,10 @@ async def connet_and_subscribe_task(bot=None):
     for wallet_address in access_token_dict.keys():
         task = asyncio.create_task(connect_and_subscribe(wallet_address, bot))
         logger.info(f"Task created for wallet: {wallet_address}")
+
+async def restart_subscribe_task():
+    pass
+    
 
 
 async def connect_and_subscribe(wallet_address, bot=None):
@@ -161,9 +164,8 @@ async def connect_and_subscribe(wallet_address, bot=None):
                 # Cancel all pending tasks  
                 for task in pending:  
                     task.cancel()  
-        except (websockets.ConnectionClosed, ConnectionRefusedError) as e:  
-            logger.info(f"Connection lost: {e}. Reconnecting in 5 seconds...")  
-            await asyncio.sleep(5)
+        except Exception as e:  
+            logger.info(f"Connection lost: {e}. Reconnecting...")  
 
   
 if __name__ == "__main__":  

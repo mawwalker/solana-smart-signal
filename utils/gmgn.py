@@ -70,6 +70,8 @@ def get_gmgn_token(wallet_address, private_key):
         logger.info(f"Failed to get GMGN token for wallet: {wallet_address}")
     else:
         logger.info(f"Successfully get GMGN token for wallet: {wallet_address}")
+        global access_token_dict
+        access_token_dict[wallet_address] = access_token
     return access_token
     
 def get_gas_price(chain='sol'):
@@ -117,6 +119,10 @@ def get_token_info(token_address):
     if 'launchpad' in token_info['data']['token']:
         result['launchpad'] = token_info['data']['token']['launchpad']
         result['launchpad_status'] = int(token_info['data']['token']['launchpad_status'])
+        
+    result['dexscr_ad'] = token_info['data']['token'].get('dexscr_ad', 0)
+    result['dexscr_update_link'] = token_info['data']['token'].get('dexscr_update_link', 0)
+    result['cto_flag'] = token_info['data']['token'].get('cto_flag', 0)
     return result
 
 def parse_token_info(data, gass_price=None):
@@ -163,7 +169,7 @@ def parse_token_info(data, gass_price=None):
             access_token = get_gmgn_token(self_wallet_address, private_key_dict[self_wallet_address])
             access_token_dict[self_wallet_address] = access_token
         logger.info(f"Get trade history for wallet: {self_wallet_address}")
-        trade_history_ = get_trade_history(token_address, access_token)
+        trade_history_ = get_trade_history(token_address, access_token, self_wallet_address)
         logger.info(f"Length of trade history: {len(trade_history_)}")
         if len(trade_history_) == 0:
             continue
@@ -186,7 +192,11 @@ def parse_token_info(data, gass_price=None):
     token_info['price_change'] = price_change
     if token_info['creation_timestamp'] == 0:
         token_info['create_time'] = '未知'
-    token_info['create_time'] = datetime.fromtimestamp(token_info['creation_timestamp'], pytz.timezone(time_zone)).strftime('%Y-%m-%d %H:%M:%S')
+    create_time = datetime.fromtimestamp(token_info['creation_timestamp'], pytz.timezone(time_zone))
+    create_time_str = create_time.strftime('%Y-%m-%d %H:%M:%S')
+    token_info['create_time'] = create_time_str
+    
+    delta_time = (local_time - create_time).total_seconds() / 60
 
 
     trade_info = {
@@ -195,6 +205,7 @@ def parse_token_info(data, gass_price=None):
         'token_address': token_address,
         'token_info': token_info,
         'time': local_time.strftime('%Y-%m-%d %H:%M:%S'),
+        'delta_time': delta_time,
         'trade_history': parsed_trade_history,
         'cost_sol': f"{cost_sol:.3f}",
         'is_open_or_close': is_open_or_close
@@ -239,7 +250,10 @@ def token_filter(token_trade_info, now_time):
     return True
 
 
-def follow_wallet(wallet_address, token, network='sol'):
+def follow_wallet(wallet_address, self_wallet_address, token, network='sol', retry=3):
+    access_token = access_token_dict.get(self_wallet_address, None)
+    if token != access_token:
+        token = access_token
     url = f"https://gmgn.ai/defi/quotation/v1/follow/sol/follow_wallet"
     payload = {"address": wallet_address,
                "network": network}
@@ -254,9 +268,18 @@ def follow_wallet(wallet_address, token, network='sol'):
     if 'code' in result and result['code'] == 0:
         return True
     else:
-        return False
+        logger.info(f"Failed to follow wallet: {result}, retry: {retry}")
+        private_key_ = private_key_dict.get(self_wallet_address, None)
+        access_token = get_gmgn_token(self_wallet_address, private_key=private_key_)
+        if retry > 0:
+            return follow_wallet(wallet_address, self_wallet_address, access_token, network=network, retry=retry-1)
+        else:
+            return False
     
-def unfollow_wallet(wallet_address, token, network='sol'):
+def unfollow_wallet(wallet_address, self_wallet_address, token, network='sol', retry=3):
+    access_token = access_token_dict.get(self_wallet_address, None)
+    if token != access_token:
+        token = access_token
     url = f"https://gmgn.ai/defi/quotation/v1/follow/sol/unfollow_wallet"
     payload = {"address": wallet_address,
                "network": network}
@@ -271,9 +294,18 @@ def unfollow_wallet(wallet_address, token, network='sol'):
     if 'code' in result and result['code'] == 0:
         return True
     else:
-        return False
+        logger.info(f"Failed to unfollow wallet: {result}, retry: {retry}")
+        private_key_ = private_key_dict.get(self_wallet_address, None)
+        access_token = get_gmgn_token(self_wallet_address, private_key=private_key_)
+        if retry > 0:
+            return unfollow_wallet(wallet_address, self_wallet_address, access_token, network=network, retry=retry-1)
+        else:
+            return False
     
-def get_following_wallets(token, network='sol'):
+def get_following_wallets(token, self_wallet_address, network='sol', retry=3):
+    access_token = access_token_dict.get(self_wallet_address, None)
+    if token != access_token:
+        token = access_token
     url = f"https://gmgn.ai/defi/quotation/v1/follow/{network}/following_wallets?network={network}"
     header = {
         "Content-Type": "application/json",
@@ -287,7 +319,15 @@ def get_following_wallets(token, network='sol'):
         for wallet in result['data']['followings']:
             wallet_address = wallet['address']
             address_list.append(wallet_address)
-    return address_list
+        return address_list
+    else:
+        logger.info(f"Failed to get following wallets: {result}")
+        private_key_ = private_key_dict.get(self_wallet_address, None)
+        access_token = get_gmgn_token(self_wallet_address, private_key=private_key_)
+        if retry > 0:
+            return get_following_wallets(access_token, self_wallet_address, network=network, retry=retry-1)
+        else:
+            return address_list
     
     
     
@@ -331,7 +371,10 @@ def get_pnl_wallets(token, network='sol'):
     return result
 
     
-def get_trade_history(token_address, token, network='sol', filter_event: str=None, cursor=None):
+def get_trade_history(token_address, token, self_wallet_address, network='sol', filter_event: str=None, cursor=None, retry=3):
+    access_token = access_token_dict.get(self_wallet_address, None)
+    if token != access_token:
+        token = access_token
     filter_event_ = f"&event={filter_event}" if filter_event is not None else ""
     cursor_ = f"&cursor={quote(cursor)}" if cursor is not None else ""
     url = f"https://gmgn.ai/defi/quotation/v1/trades/{network}/{token_address}?limit=100{cursor_}{filter_event_}&maker=&following=true"
@@ -351,7 +394,13 @@ def get_trade_history(token_address, token, network='sol', filter_event: str=Non
                 history.extend(next_history)
         return history
     else:
-        return []
+        logger.info(f"Failed to get trade history: {result}")
+        private_key_ = private_key_dict.get(self_wallet_address, None)
+        access_token = get_gmgn_token(self_wallet_address, private_key=private_key_)
+        if retry > 0:
+            return get_trade_history(token_address, access_token, self_wallet_address, network=network, filter_event=filter_event, cursor=cursor, retry=retry-1)
+        else:
+            return []
     
 def parse_history(history, now_time=None):
     '''解析交易历史，获取每个钱包当前持仓比例，计算总购买钱包数、当前仍持仓钱包数，清仓钱包数；
@@ -360,11 +409,24 @@ def parse_history(history, now_time=None):
     result = {'all_wallets': 0, 'full_wallets': 0, 
               'hold_wallets': 0, 'close_wallets': 0,
               '10min_buys': 0, '10min_close': 0, 'total_trades': len(history),
+              '3min_buys': 0, '3min_close': 0, 
               'total_buy': 0, 'total_sell': 0}
     first_trade_time = now_time
     wallet_info = {}
     recorded_10min_wallets = []
+    recorded_10min_buy_wallets = []
+    recorded_10min_sell_wallets = []
+    recorded_3min_wallets = []
+    recorded_3min_buy_wallets = []
+    recorded_3min_sell_wallets = []
     for trade in history:
+        trade_time_stamp = trade['timestamp']
+        trade_local_time = datetime.fromtimestamp(trade_time_stamp, pytz.timezone(time_zone))
+        
+        # 避免api时间差，过滤掉now_time之后的交易
+        if trade_local_time > now_time:
+            continue
+
         wallet_address = trade['maker']
         event = trade['event']
         if event == 'buy':
@@ -380,25 +442,26 @@ def parse_history(history, now_time=None):
         balance = float(trade['balance']) if (trade['balance'] is not None) and (trade['balance'] != '') else 0
         bought_amount = float(trade['history_bought_amount'])
         sold_amount = float(trade['history_sold_amount'])
-        trade_time_stamp = trade['timestamp']
-        trade_local_time = datetime.fromtimestamp(trade_time_stamp, pytz.timezone(time_zone))
-        
-        # 避免api时间差，过滤掉now_time之后的交易
-        if trade_local_time > now_time:
-            continue
         
         if trade_local_time < first_trade_time:
             first_trade_time = trade_local_time
         
         trade_time_delta = (now_time - trade_local_time).total_seconds() / 60
         
-        if trade_time_delta <= 10.0:
+        if trade_time_delta <= 10.0 and trade_time_delta > 3.0:
             if wallet_address not in recorded_10min_wallets:
                 recorded_10min_wallets.append(wallet_address)
                 if event == 'buy':
                     result['10min_buys'] += 1
                 elif event == 'sell' and is_open_or_close == 1:
                     result['10min_close'] += 1
+        if trade_time_delta <= 3.0:
+            if wallet_address not in recorded_3min_wallets:
+                recorded_3min_wallets.append(wallet_address)
+                if event == 'buy':
+                    result['3min_buys'] += 1
+                elif event == 'sell' and is_open_or_close == 1:
+                    result['3min_close'] += 1
         
         if wallet_address not in wallet_info:
             wallet_info[wallet_address] = {'balance': balance, 'bought_amount': bought_amount, 'sold_amount': sold_amount}
