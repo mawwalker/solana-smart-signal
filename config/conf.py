@@ -29,7 +29,7 @@ admin_list = os.getenv('ADMIN_LIST').split(',')
 admin_list = [int(admin) for admin in admin_list]
 
 if_filter = int(os.getenv('IF_FILTER', 1))
-min_buy_wallets = int(os.getenv('MIN_BUY_WALLETS', 2))
+min_buy_wallets = int(os.getenv('MIN_BUY_WALLETS', 0))
 max_market_cap = float(os.getenv('MAX_MARKET_CAP', 0))
 min_market_cap = float(os.getenv('MIN_MARKET_CAP', 0))
 # 过滤创建时间，单位min

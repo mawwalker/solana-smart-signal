@@ -1,5 +1,7 @@
 from loguru import logger
-from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad, following_wallets_nums, filter_dex_socials, filter_dex_ads
+from datetime import datetime
+import pytz
+from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad, following_wallets_nums, filter_dex_socials, filter_dex_ads, time_zone, max_ceate_time, min_buy_wallets
 
 def format_number(num):  
     """  
@@ -112,22 +114,36 @@ def generate_markdown(parsed_result):
     return message
 
 
-def filter_token(parsed_result):
+def filter_token(parsed_result, now_time):
     token_id = parsed_result['token_address']
     trade_history = parsed_result['trade_history']
     token_info = parsed_result['token_info']
+    token_create_time = datetime.strptime(token_info['create_time'], '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone))
     
+    # if trade_history['close_wallets'] == 0 and trade_history['10min_buys'] >= 2 and trade_history['10min_close'] == 0 and trade_history['full_wallets'] >= 3:
+    #     logger.info(f"token: {token_id} passed filter trade fomo. trade stats: {trade_history}")
+    # else:
+    #     logger.info(f"token: {token_id} failed filter trade fomo. trade stats: {trade_history}")
+    #     return False
     
-    if trade_history['close_wallets'] == 0 and trade_history['10min_buys'] >= 2 and trade_history['10min_close'] == 0 and trade_history['full_wallets'] >= 3:
-        logger.info(f"token: {token_id} passed filter trade fomo. trade stats: {trade_history}")
+    if trade_history['full_wallets'] > min_buy_wallets:
+        logger.info(f"token: {token_id} passwd filter min buy wallets")
     else:
-        logger.info(f"token: {token_id} failed filter trade fomo. trade stats: {trade_history}")
         return False
     
-    if token_info['market_cap'] >= min_market_cap and token_info['market_cap'] <= max_market_cap:
-        logger.info(f"token: {token_id} passed filter market cap. Market cap: {token_info['market_cap']}")
+    if token_info['market_cap'] >= min_market_cap:
+        logger.info(f"token: {token_id} passed filter min market cap. Market cap: {token_info['market_cap']}")
     else:
-        logger.info(f"token: {token_id} failed filter market cap. Market cap: {token_info['market_cap']}")
+        logger.info(f"token: {token_id} failed filter min market cap. Market cap: {token_info['market_cap']}")
+        return False
+
+    if max_market_cap > 0 and token_info['market_cap'] > max_market_cap:
+        logger.info(f"token: {token_id} passed filter max market cap. Market cap: {token_info['market_cap']}")
+        return False
+    
+    # 过滤创建时间，旧盘不推送
+    if max_ceate_time > 0 and (now_time - token_create_time).total_seconds() / 60 > max_ceate_time:
+        logger.info(f"Token too old: {token_create_time}")
         return False
     
     if filter_dex_socials:

@@ -9,6 +9,7 @@ import nacl.signing
 import nacl.encoding
 import pytz
 from datetime import datetime, timedelta
+from utils.util import filter_token
 from config.conf import *
   
 # 步骤1：获取登录nonce  
@@ -213,7 +214,7 @@ def parse_token_info(data, gass_price=None):
     
     filter_result = True
     if if_filter:
-        filter_result = token_filter(trade_info, local_time)
+        filter_result = filter_token(trade_info, local_time)
     
     
     if filter_result:
@@ -222,32 +223,32 @@ def parse_token_info(data, gass_price=None):
         return None
 
 
-def token_filter(token_trade_info, now_time):
-    event_type = token_trade_info['event_type']
-    token_info = token_trade_info['token_info']
-    trade_history = token_trade_info['trade_history']
-    market_cap = token_info['market_cap']
-    token_create_time = datetime.strptime(token_info['create_time'], '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone))
+# def token_filter(token_trade_info, now_time):
+#     event_type = token_trade_info['event_type']
+#     token_info = token_trade_info['token_info']
+#     trade_history = token_trade_info['trade_history']
+#     market_cap = token_info['market_cap']
+#     token_create_time = datetime.strptime(token_info['create_time'], '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone))
     
-    # 过滤市值范围
-    if market_cap < min_market_cap:
-        logger.info(f"Market cap out of range: {market_cap}")
-        return False
+#     # 过滤市值范围
+#     if market_cap < min_market_cap:
+#         logger.info(f"Market cap out of range: {market_cap}")
+#         return False
     
-    if max_market_cap >0 and market_cap > max_market_cap:
-        logger.info(f"Market cap out of range: {market_cap}")
-        return False
+#     if max_market_cap >0 and market_cap > max_market_cap:
+#         logger.info(f"Market cap out of range: {market_cap}")
+#         return False
     
-    # 过滤创建时间，旧盘不推送
-    if max_ceate_time > 0 and (now_time - token_create_time).total_seconds() / 60 > max_ceate_time:
-        logger.info(f"Token too old: {token_create_time}")
-        return False
+#     # 过滤创建时间，旧盘不推送
+#     if max_ceate_time > 0 and (now_time - token_create_time).total_seconds() / 60 > max_ceate_time:
+#         logger.info(f"Token too old: {token_create_time}")
+#         return False
     
-    if trade_history['all_wallets'] < min_buy_wallets:
-        logger.info(f"Buy wallets less than {min_buy_wallets}, not push message")
-        return False
+#     if trade_history['all_wallets'] < min_buy_wallets:
+#         logger.info(f"Buy wallets less than {min_buy_wallets}, not push message")
+#         return False
     
-    return True
+#     return True
 
 
 def follow_wallet(wallet_address, self_wallet_address, token, network='sol', retry=3):
@@ -390,7 +391,7 @@ def get_trade_history(token_address, token, self_wallet_address, network='sol', 
         if 'next' in result['data']:
             next_cursor = result['data']['next']
             if next_cursor is not None and next_cursor != '':
-                next_history = get_trade_history(token_address, token, network=network, filter_event=filter_event, cursor=next_cursor)
+                next_history = get_trade_history(token_address, token, self_wallet_address, network=network, filter_event=filter_event, cursor=next_cursor)
                 history.extend(next_history)
         return history
     else:
