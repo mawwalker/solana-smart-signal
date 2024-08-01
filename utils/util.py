@@ -114,6 +114,17 @@ def generate_markdown(parsed_result):
     return message
 
 
+def filter_token_level_1(parsed_result, now_time):
+    '''
+    基础过滤规则，只过滤购买钱包数，至少2个才推送
+    '''
+    if parsed_result['trade_history']['full_wallets'] > 2:
+        logger.info(f"token: {parsed_result['token_address']} passed filter min buy wallets")
+    else:
+        logger.info(f"token: {parsed_result['token_address']} failed filter min buy wallets")
+        return False
+    
+
 def filter_token(parsed_result, now_time):
     token_id = parsed_result['token_address']
     trade_history = parsed_result['trade_history']
@@ -126,9 +137,10 @@ def filter_token(parsed_result, now_time):
     #     logger.info(f"token: {token_id} failed filter trade fomo. trade stats: {trade_history}")
     #     return False
     
-    if trade_history['full_wallets'] > min_buy_wallets:
+    if trade_history['all_wallets'] >= min_buy_wallets:
         logger.info(f"token: {token_id} passwd filter min buy wallets")
     else:
+        logger.info(f"token: {token_id} failed to filter min buy wallets, all wallets: {trade_history['all_wallets']}, min_buy_wallets: {min_buy_wallets}")
         return False
     
     if token_info['market_cap'] >= min_market_cap:
@@ -160,24 +172,6 @@ def filter_token(parsed_result, now_time):
             logger.info(f"token: {token_id} failed filter dex ads. Dex ads: {token_info['dexscr_ad']}")
             return False
     
-    
-    if 'launchpad' in token_info:
-        # 如果过滤掉各种内盘，则设置filter_in_launch_pad为1
-        launchpad_status = token_info['launchpad_status']
-        if launchpad_status == 0 and filter_in_launch_pad:
-            logger.info(f"token: {token_id} failed filter launchpad. Launchpad status: {launchpad_status}")
-            return False
-        elif launchpad_status == 1:
-            # 如果已经发射，过滤一下初始sol数, 以pump为参考, 初始sol数大于30
-            if token_info['pool_initial_reverse'] < 30:
-                logger.info(f"token: {token_id} failed filter launchpad. It's launched, but Pool initial reverse is small: {token_info['pool_initial_reverse']}")
-                return False
-        else:
-            return True
-    
-    # 如果没有launchpad，那需要过滤一下初始sol数, 以pump为参考, 初始sol数大于30
-    elif token_info['pool_initial_reverse'] < 30:
-        return False
     
     # ... 添加更多过滤条件
     

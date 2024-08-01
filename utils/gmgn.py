@@ -130,7 +130,7 @@ def parse_token_info(data, gass_price=None):
     logger.info("Enter parse_token_info")
     event_type = data['event_type']
     wallet_address = data['wallet_address']
-    token_address = data['token']['address']
+    token_address = data['token']['address'] if 'token' in data else data['token_address']
     times_stamp = data['timestamp']
     local_time = datetime.fromtimestamp(times_stamp, pytz.timezone(time_zone))
     
@@ -183,6 +183,7 @@ def parse_token_info(data, gass_price=None):
     cost_sol = float(cost_usd) / float(gass_price['eth_usd_price'])
     
     token_info = get_token_info(token_address)
+    logger.info(f"Token info get complete, token_info: {token_info}")
     token_info['address'] = token_address
     token_info['symbol'] = token_symbol
     token_info['name'] = token_name
@@ -211,15 +212,18 @@ def parse_token_info(data, gass_price=None):
         'cost_sol': f"{cost_sol:.3f}",
         'is_open_or_close': is_open_or_close
     }
-    
+    logger.info(f"Total trade info: {trade_info}")
+    logger.info("Entering filter_token")
     filter_result = True
     if if_filter:
         filter_result = filter_token(trade_info, local_time)
     
     
     if filter_result:
+        logger.info(f"Complete all filter, all passed.")
         return trade_info
     else:
+        logger.info(f"Faied to pass filter.")
         return None
 
 

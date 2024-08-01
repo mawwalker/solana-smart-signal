@@ -50,6 +50,10 @@ trade_monitor = int(os.getenv('TRADE_TYPE', -1))
 dbot_token = os.getenv('DBOT_TOKEN')
 dbot_wallet_id = os.getenv('DBOT_WALLET_ID', None)
 
+wallet_signal_server = os.getenv('WALLET_SIGNAL_SERVER', 'localhost')
+wallet_signal_port = int(os.getenv('WALLET_SIGNAL_PORT', 8000))
+wallet_signal_route = os.getenv('WALLET_SIGNAL_ROUTE', '/wallet_signal')
+
 DATABASE_FILE = "data/data.db"
 
 if os.path.dirname(DATABASE_FILE) and not os.path.exists(os.path.dirname(DATABASE_FILE)):

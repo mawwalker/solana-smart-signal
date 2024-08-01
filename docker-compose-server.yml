@@ -3,9 +3,9 @@ version: "3"
 services:
   bot:
     image: matrixarcher/solana-smart-signal:latest
-    container_name: solana-smart-signal-client
-    # ports:
-    #   - "8080:80"
+    container_name: solana-smart-signal-server
+    ports:
+      - "8000:8000"
     restart: unless-stopped
     volumes:
       - ./data:/app/data
@@ -20,9 +20,4 @@ services:
       - WALLET_ADDRESS_LIST=${WALLET_ADDRESS_LIST}
       - DBOT_TOKEN=${DBOT_TOKEN}
       - DBOT_WALLET_ID=${DBOT_WALLET_ID}
-      - REPEAT_PUSH=${REPEAT_PUSH}
-      - TRADE_TYPE=${TRADE_TYPE}
-      - MIN_MARKET_CAP=${MIN_MARKET_CAP}
-      - MAX_MARKET_CAP=${MAX_MARKET_CAP}
-      - MAX_CEATE_TIME=${MAX_CEATE_TIME}
-      - FILTER_DEX_SOCIALS=${FILTER_DEX_SOCIALS}
+    entrypoint: ["python", "gmgn_wallets_signal.py"]

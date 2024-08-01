@@ -8,13 +8,16 @@ from telegram.ext import Application, CommandHandler, ContextTypes, Updater
 import asyncio
 import threading
 from loguru import logger
-from sub import connect_and_subscribe, connet_and_subscribe_task
+from fastapi import FastAPI
+import uvicorn
+from sub import connect_and_subscribe, connect_and_subscribe_task
 from utils.gmgn import follow_wallet, unfollow_wallet, get_following_wallets
 from sub import fetch_valid_token
 from databases.database import create_tables
 from config.conf import bot_token, private_key_dict, access_token_dict, admin_list
 
 ALLOWED_USER_IDS = admin_list
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"User {update.effective_user.id} started the bot.")
@@ -97,38 +100,44 @@ async def get_wallet_nums(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text('You are not allowed to use this command.')
 
 
-def run_asyncio_coroutine(coroutine, loop):  
-    asyncio.set_event_loop(loop)  
-    loop.run_until_complete(coroutine)  
-
-def main():
-    # 创建事件循环  
-    loop = asyncio.new_event_loop()  
-    asyncio.set_event_loop(loop)
-
+async def main():
     application = Application.builder().token(bot_token).build()
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("add", add_wallet))
     application.add_handler(CommandHandler("rm", delete_wallet))
     application.add_handler(CommandHandler("list", get_wallet_nums))
-    
-    commands = [BotCommand("/start", "Start the bot."), 
-                BotCommand("/add", "/add <wallet_address> to add a wallet."), 
-                BotCommand("/rm", "/rm <wallet_address> to remove a wallet."),
-                BotCommand("/list", "List all wallets and their following wallets.")]
-    
-    result = loop.run_until_complete(application.bot.set_my_commands(commands))
+
+    # Set bot commands
+    result = await application.bot.set_my_commands([
+        BotCommand("/start", "Start the bot."),
+        BotCommand("/add", "/add <wallet_address> to add a wallet."),
+        BotCommand("/rm", "/rm <wallet_address> to remove a wallet."),
+        BotCommand("/list", "List all wallets and their following wallets.")
+    ])
     logger.info(f"Set commands result: {result}")
-    
-    database_result = loop.run_until_complete(create_tables())
+
+    # Create tables in the database
+    database_result = await create_tables()
     logger.info(f"Create tables result: {database_result}")
-    
-    loop.run_until_complete(connet_and_subscribe_task(application.bot))
-    
-    logger.info(f"Starting bot commands...")
-    # # 在子线程中运行 bot 的事件循环  
-    threading.Thread(target=run_asyncio_coroutine, args=(application.run_polling(), loop)).start()   
-    
+
+    # Initialize and start the application
+    async with application:
+        await application.start()
+        await application.updater.start_polling()
+
+        # Start the connect_and_subscribe_task concurrently
+        connect_and_subscribe = asyncio.create_task(connect_and_subscribe_task(application.bot))
+        
+        # Keep the event loop running until you want to shut down
+        try:
+            await asyncio.Future()  # Run forever
+        finally:
+            await application.updater.stop()
+            await application.stop()
+            connect_and_subscribe.cancel()  # Cancel the connect and subscribe task
+            await application.shutdown()
+
+   
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())

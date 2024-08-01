@@ -11,7 +11,7 @@ from utils.util import generate_markdown, filter_token
 from trade.dbot import get_wallet_id, dbot_simulate_swap, dbot_swap
 from trade.trade import send_trade_with_retry
 from databases.database import insert_token_notify, get_token_notify
-from config.conf import channel_id, access_token_dict, private_key_dict, repeat_push, trade_monitor, following_wallets_nums
+from config.conf import channel_id, access_token_dict, private_key_dict, repeat_push, trade_monitor, following_wallets_nums, wallet_signal_server, wallet_signal_port, wallet_signal_route
   
 token_expiry_duration = timedelta(hours=2)  
 token_acquired_time = None
@@ -104,7 +104,7 @@ async def listen(ws, bot=None):
                 if 'data' not in message or len(message['data']) == 0:
                     continue
                 follow_data = message['data'][0]
-                token_address = follow_data['token']['address']
+                token_address = follow_data['token_address']
                 # 过滤掉稳定币的token
                 if "So11111111" in token_address or token_address == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
                     continue
@@ -131,15 +131,19 @@ async def fetch_valid_token(wallet_address):
         access_token_dict[wallet_address] = wallet_token
     return wallet_token
   
-async def connet_and_subscribe_task(bot=None):
+async def connect_and_subscribe_task(bot=None):
     await bot.send_message(chat_id=channel_id, text="机器人启动成功！")
     gas_price_task = asyncio.create_task(update_gas_price())
-    for wallet_address in access_token_dict.keys():
-        task = asyncio.create_task(connect_and_subscribe(wallet_address, bot))
-        logger.info(f"Task created for wallet: {wallet_address}")
-
-async def restart_subscribe_task():
-    pass
+    # for wallet_address in access_token_dict.keys():
+    #     task = asyncio.create_task(connect_and_subscribe(wallet_address, bot))
+    #     logger.info(f"Task created for wallet: {wallet_address}")
+    task = None
+    # 建立一个后台任务，时刻检查订阅任务是否正常，如果不正常则重新连接
+    while True:
+        if task is None or task.done():
+            logger.info("Task done, reconnecting...")
+            task = asyncio.create_task(connect_local_websocket(bot))
+        await asyncio.sleep(3)
     
 
 
@@ -167,6 +171,28 @@ async def connect_and_subscribe(wallet_address, bot=None):
         except Exception as e:  
             logger.info(f"Connection lost: {e}. Reconnecting...")  
 
+
+async def connect_local_websocket(bot=None):
+    try:
+        async with websockets.connect(f"ws://{wallet_signal_server}:{wallet_signal_port}/{wallet_signal_route}") as ws:
+            await subscribe(ws)  
+
+            # Create tasks for heartbeat and listening  
+            heartbeat_task = asyncio.create_task(send_heartbeat(ws))
+            listen_task = asyncio.create_task(listen(ws, bot=bot))  
+
+            # Wait for either task to complete
+            done, pending = await asyncio.wait(  
+                [heartbeat_task, listen_task],  
+                return_when=asyncio.FIRST_COMPLETED  
+            )  
+
+            # Cancel all pending tasks  
+            for task in pending:  
+                task.cancel()  
+    except Exception as e:
+        logger.error(f"Error connecting to local WebSocket: {e}")
+        await asyncio.sleep(5)
   
 if __name__ == "__main__":  
     asyncio.run(connect_and_subscribe())  
