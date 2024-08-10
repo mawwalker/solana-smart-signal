@@ -1,7 +1,7 @@
 from loguru import logger
 from datetime import datetime
 import pytz
-from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad, following_wallets_nums, filter_dex_socials, filter_dex_ads, time_zone, max_ceate_time, min_buy_wallets
+from config.conf import min_market_cap, max_market_cap, filter_in_launch_pad, following_wallets_nums, filter_dex_socials, filter_dex_ads, time_zone, max_ceate_time, min_buy_wallets, strategy
 
 def format_number(num):  
     """  
@@ -56,6 +56,8 @@ def generate_markdown(parsed_result):
 
     token_info = parsed_result['token_info']
     create_time = token_info['create_time']
+    create_time_str = datetime.strptime(create_time, '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone)).strftime('%Y-%m-%d %H:%M:%S')
+    
     # minutes
     delta_time = parsed_result['delta_time']
     is_new = False
@@ -95,6 +97,8 @@ def generate_markdown(parsed_result):
         fomo_range = 10
     
     fomo_symbol = ''.join(["🔥" for _ in range(fomo_range)])
+    net_in_volume_1m_str = format_number(token_info['net_in_volume_1m'])
+    net_in_volume_5m_str = format_number(token_info['net_in_volume_5m'])
     
 
     message = f"***{new_str}*** **{parsed_result['event_type']}**, **{parsed_result['cost_sol']} SOL**  ***{token_info['symbol']}({token_info['name']})***\n\n"
@@ -104,7 +108,8 @@ def generate_markdown(parsed_result):
     message += f"***市值***: ***${market_cap_str}*** (${token_price_str})\n\n"
     message += dex_str
     message += f"**3min买**: {trade_history['3min_buys']}; **10min买**: ***{trade_history['10min_buys']}***; \n\n"
-    message += f"**第一位买入时间**: ***{first_trade_time}***\n"
+    message += f"***1m净流入***: ***${net_in_volume_1m_str}***; ***5m净流入***: ***${net_in_volume_5m_str}***; \n\n"
+    message += f"**创建时间**: ***{create_time_str}***\n"
     message += f"🟩全仓 | 🟨减仓 | 🟥清仓 \n\n"
     message += f"**买入钱包数**: {total_num_symbol}\n"
     message += f"**持有人**: {token_info['holder_count']}, " + f"**TOP10比例**: {token_info['top_10_holder_rate']}\n\n"
@@ -114,28 +119,78 @@ def generate_markdown(parsed_result):
     return message
 
 
-def filter_token_level_1(parsed_result, now_time):
+def filter_token_strategy_1(parsed_result, now_time):
+    '''策略1
     '''
-    基础过滤规则，只过滤购买钱包数，至少2个才推送
-    '''
-    if parsed_result['trade_history']['full_wallets'] > 2:
-        logger.info(f"token: {parsed_result['token_address']} passed filter min buy wallets")
+    token_id = parsed_result['token_address']
+    trade_history = parsed_result['trade_history']
+    origin_history = parsed_result['origin_history']
+    token_info = parsed_result['token_info']
+    # kline = parsed_result['kline']
+    token_create_time = datetime.strptime(token_info['create_time'], '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone))
+    # 如果市值大于150k，钱包数小于2，可以推送。如果市值不满足，则过滤掉钱包数小于2的
+    markect_cap = token_info['market_cap']
+    if trade_history['all_wallets'] < 2:
+        if markect_cap < 150000:
+            logger.info(f"token: {token_id} failed to filter min buy wallets, all wallets: {trade_history['all_wallets']}, min_buy_wallets: {min_buy_wallets}")
+            return False
+        else:
+            logger.info(f"token: {token_id} passed regular 1. all wallets: {trade_history['all_wallets']}, market cap: {markect_cap}")
+            return True
     else:
-        logger.info(f"token: {parsed_result['token_address']} failed filter min buy wallets")
+        logger.info(f"token: {token_id} passed regular 1. all wallets: {trade_history['all_wallets']}, market cap: {markect_cap}")
+        
+    # 钱包数大于等于4，且无清仓信号，可以推送
+    if trade_history['all_wallets'] >= 4 and trade_history['close_wallets'] < 1:
+        logger.info(f"token: {token_id} passed regular 2. all wallets: {trade_history['all_wallets']}, close wallets: {trade_history['close_wallets']}")
+        return True
+    
+    # 市值在64k-1M之间，且如果这次买入比上次买入，价格增加了80%，可以推送
+    if markect_cap >= 50000 and markect_cap <= 1000000:
+        the_last_buy = None
+        last_second_buy = None
+        for trade in origin_history:
+            event = trade['event']
+            if event == 'sell':
+                continue
+            if the_last_buy is None:
+                the_last_buy = trade
+                continue
+            if last_second_buy is None:
+                last_second_buy = trade
+                continue
+            break
+        the_last_buy_price = float(the_last_buy['price_usd'])
+        
+        last_second_buy_price = float(last_second_buy['price_usd'])
+        
+        if the_last_buy_price > 0 and last_second_buy_price > 0:
+            price_increase = the_last_buy_price / last_second_buy_price
+            if price_increase >= 1.8:
+                logger.info(f"token: {token_id} passed regular 3. price increase: {price_increase}")
+                return True
+            else:
+                logger.info(f"token: {token_id} failed to filter price increase. price increase: {price_increase}")
+                return False
+        
+    else:
+        logger.info(f"token: {token_id} failed to filter market cap. Market cap: {markect_cap}")
         return False
     
+    return False
+
 
 def filter_token(parsed_result, now_time):
+    ''' 简单过滤规则
+    '''
+    
+    if strategy == 1:
+        return filter_token_strategy_1(parsed_result, now_time)
+    
     token_id = parsed_result['token_address']
     trade_history = parsed_result['trade_history']
     token_info = parsed_result['token_info']
     token_create_time = datetime.strptime(token_info['create_time'], '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone))
-    
-    # if trade_history['close_wallets'] == 0 and trade_history['10min_buys'] >= 2 and trade_history['10min_close'] == 0 and trade_history['full_wallets'] >= 3:
-    #     logger.info(f"token: {token_id} passed filter trade fomo. trade stats: {trade_history}")
-    # else:
-    #     logger.info(f"token: {token_id} failed filter trade fomo. trade stats: {trade_history}")
-    #     return False
     
     if trade_history['all_wallets'] >= min_buy_wallets:
         logger.info(f"token: {token_id} passwd filter min buy wallets")

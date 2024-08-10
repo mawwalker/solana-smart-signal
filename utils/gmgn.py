@@ -120,11 +120,52 @@ def get_token_info(token_address):
     if 'launchpad' in token_info['data']['token']:
         result['launchpad'] = token_info['data']['token']['launchpad']
         result['launchpad_status'] = int(token_info['data']['token']['launchpad_status'])
-        
+    
+    result['net_in_volume_1m'] = token_info['data']['token'].get('net_in_volume_1m', 0)
+    result['net_in_volume_5m'] = token_info['data']['token'].get('net_in_volume_5m', 0)
+    result['net_in_volume_1h'] = token_info['data']['token'].get('net_in_volume_1h', 0)
+    
+    
     result['dexscr_ad'] = token_info['data']['token'].get('dexscr_ad', 0)
     result['dexscr_update_link'] = token_info['data']['token'].get('dexscr_update_link', 0)
     result['cto_flag'] = token_info['data']['token'].get('cto_flag', 0)
     return result
+
+
+def get_token_kline(token_address, start_time: datetime, end_time: datetime, resolution='1m'):
+    '''
+    '''
+    # https://gmgn.ai/defi/quotation/v1/tokens/kline/sol/E8h41JVACEiePCdbccFb9mRUvcJc9aR2RCT6hnDCpump?resolution=1m&from=1722742735&to=1722762475
+    # 秒级时间戳
+    
+    start_time_timestamp = int(start_time.timestamp())
+    end_time_timestamp = int(end_time.timestamp())
+    url = f"https://gmgn.ai/defi/quotation/v1/tokens/kline/sol/{token_address}?resolution={resolution}&from={start_time_timestamp}&to={end_time_timestamp}"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.get(url, headers=headers)
+    result = response.json()
+    if 'code' in result and result['code'] == 0:
+        data = result['data']
+        return data
+    else:
+        return []
+    
+    
+    # {
+    # "code": 0,
+    # "msg": "success",
+    # "data": [
+    #     {
+    #         "open": "0.00000414455265245450",
+    #         "high": "0.00000448754171965200",
+    #         "low": "0.00000414455265245450",
+    #         "close": "0.00000448754171965200",
+    #         "volume": "266.83007776957000000000",
+    #         "time": "1722751980000"
+    #     },
+    
 
 def parse_token_info(data, gass_price=None):
     logger.info("Enter parse_token_info")
@@ -199,6 +240,9 @@ def parse_token_info(data, gass_price=None):
     token_info['create_time'] = create_time_str
     
     delta_time = (local_time - create_time).total_seconds() / 60
+    
+    kline = get_token_kline(token_address, create_time, local_time)
+    
 
 
     trade_info = {
@@ -206,8 +250,10 @@ def parse_token_info(data, gass_price=None):
         'wallet_address': wallet_address,
         'token_address': token_address,
         'token_info': token_info,
+        'kline': kline,
         'time': local_time.strftime('%Y-%m-%d %H:%M:%S'),
         'delta_time': delta_time,
+        'origin_history': trade_history,
         'trade_history': parsed_trade_history,
         'cost_sol': f"{cost_sol:.3f}",
         'is_open_or_close': is_open_or_close
@@ -225,34 +271,6 @@ def parse_token_info(data, gass_price=None):
     else:
         logger.info(f"Faied to pass filter.")
         return None
-
-
-# def token_filter(token_trade_info, now_time):
-#     event_type = token_trade_info['event_type']
-#     token_info = token_trade_info['token_info']
-#     trade_history = token_trade_info['trade_history']
-#     market_cap = token_info['market_cap']
-#     token_create_time = datetime.strptime(token_info['create_time'], '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone))
-    
-#     # 过滤市值范围
-#     if market_cap < min_market_cap:
-#         logger.info(f"Market cap out of range: {market_cap}")
-#         return False
-    
-#     if max_market_cap >0 and market_cap > max_market_cap:
-#         logger.info(f"Market cap out of range: {market_cap}")
-#         return False
-    
-#     # 过滤创建时间，旧盘不推送
-#     if max_ceate_time > 0 and (now_time - token_create_time).total_seconds() / 60 > max_ceate_time:
-#         logger.info(f"Token too old: {token_create_time}")
-#         return False
-    
-#     if trade_history['all_wallets'] < min_buy_wallets:
-#         logger.info(f"Buy wallets less than {min_buy_wallets}, not push message")
-#         return False
-    
-#     return True
 
 
 def follow_wallet(wallet_address, self_wallet_address, token, network='sol', retry=3):

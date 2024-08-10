@@ -46,6 +46,8 @@ repeat_push = int(os.getenv('REPEAT_PUSH', 1))
 # 发送交易，-1表示不发送，1表示模拟发送，0表示真实发送
 trade_monitor = int(os.getenv('TRADE_TYPE', -1))
 
+strategy = int(os.getenv('STRATEGY', -1))
+
 
 dbot_token = os.getenv('DBOT_TOKEN')
 dbot_wallet_id = os.getenv('DBOT_WALLET_ID', None)

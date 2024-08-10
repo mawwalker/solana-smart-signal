@@ -34,7 +34,7 @@ class GmgnWebsocketReverse():
         '''定时更新websocket urls
         '''
         while True:
-            await asyncio.sleep(60 * 30)
+            await asyncio.sleep(60 * 20)
             try:
                 self.update_websocket_urls()
             except Exception as e:
@@ -46,8 +46,12 @@ class GmgnWebsocketReverse():
         tasks = []
         new_tasks = []
         
+        forward_task = None
+        
         async def create_tasks(this_connection_urls):
             nonlocal new_tasks
+            nonlocal forward_task
+            
             new_tasks = []
             remote_connections = {}
             for wallet_address, websocket_url in this_connection_urls.items():
@@ -56,8 +60,11 @@ class GmgnWebsocketReverse():
                 remote_connections[wallet_address] = remote_conn
                 rev_task = asyncio.create_task(reverse(ws_local, remote_conn))
                 new_tasks.append(rev_task)
+            
+            if forward_task and not forward_task.done():
+                forward_task.cancel()
             forward_task = asyncio.create_task(forward(ws_local, remote_connections))
-            new_tasks.append(forward_task)
+            # new_tasks.append(forward_task)
         
         while True:
             try:
@@ -65,19 +72,19 @@ class GmgnWebsocketReverse():
                 if this_connection_urls != self.websocket_urls:
                     logger.info(f"Websocket urls updated, reconnecting...")
                     this_connection_urls = self.websocket_urls.copy()
+                    await create_tasks(this_connection_urls)
                     for task in tasks:
                         task.cancel()
                         del task
-                    await create_tasks(this_connection_urls)
                     # await asyncio.gather(*new_tasks)
                     logger.info(f"New Tasks length: {len(new_tasks)}")
                     tasks = new_tasks
 
                 if len(new_tasks) == 0:
+                    await create_tasks(this_connection_urls)
                     for task in tasks:
                         task.cancel()
                         del task
-                    await create_tasks(this_connection_urls)
                     # await asyncio.gather(*new_tasks)
                     logger.info(f"New Tasks length: {len(new_tasks)}")
                     tasks = new_tasks
