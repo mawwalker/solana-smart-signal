@@ -2,3 +2,13 @@
 */__pycache__/*
 *.pyc
 .env
+*.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+*/.vscode/*
+*/.vscode
+*/.git/*
+*/.git
+*/.gitignore
+*/.gitattributes
+*/.DS_Store
+*/.DS_Store

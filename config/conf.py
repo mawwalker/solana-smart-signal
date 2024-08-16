@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from curl_cffi import requests
+session = requests.Session()
+cookie = None
+
 # 从环境变量中获取私钥和钱包地址
 
 PRIVATE_KEY_BASE58_LIST = os.getenv('PRIVATE_KEY_BASE58_LIST').split(',')

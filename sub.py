@@ -53,7 +53,7 @@ async def update_gas_price():
     while True:
         gass_price = get_gas_price()
         logger.info(f"Update gas price: {gass_price}")
-        await asyncio.sleep(20)
+        await asyncio.sleep(600)
         
 
 async def send_message_with_retry(bot, channel_id, message, token_address, retries=3, timeout=1):  

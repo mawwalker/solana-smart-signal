@@ -93,7 +93,7 @@ class GmgnWebsocketReverse():
                     if task.done() or task.exception():
                         self.update_websocket_urls()
             except Exception as e:
-                import pdb; pdb.set_trace()
+                # import pdb; pdb.set_trace()
                 self.update_websocket_urls()
                 continue
             await asyncio.sleep(3)

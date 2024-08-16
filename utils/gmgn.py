@@ -1,8 +1,14 @@
-import os  
-import requests
+import os
+import sys
+# 加上级目录 ../
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+  
+# import requests
+from curl_cffi import requests
 import datetime
 from loguru import logger
 import base58
+import traceback
 from urllib.parse import quote
 from solana.rpc.api import Keypair
 import nacl.signing  
@@ -10,16 +16,50 @@ import nacl.encoding
 import pytz
 from datetime import datetime, timedelta
 from utils.util import filter_token
+from config.conf import cookie
 from config.conf import *
-  
+
+
+def request_with_retry(url, headers, json=None, method='GET', retries=3):
+    for i in range(retries):
+        global cookie
+        if cookie is None:
+            session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
+        cookie = session.cookies.get_dict()
+        headers['Cookie'] = f"__cf_bm={cookie['__cf_bm']}"
+        try:
+            if method == 'GET':
+                response = requests.get(url, headers=headers, impersonate="chrome")
+            elif method == 'POST':
+                response = requests.post(url, headers=headers, json=json, impersonate="chrome")
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            logger.error(f"Failed to request url: {url}, error: {str(e)}, retry: {i}")
+            session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
+            cookie = session.cookies.get_dict()
+            headers['Cookie'] = f"__cf_bm={cookie['__cf_bm']}"
+            if i == retries - 1:
+                return None
+            continue
+
+
 # 步骤1：获取登录nonce  
 def get_login_nonce(wallet_address):  
-    try:  
-        response = requests.get(f'https://gmgn.ai/defi/auth/v1/login_nonce?address={wallet_address}')  
-        response.raise_for_status()  
+    try: 
+        global cookie
+        if cookie is None:
+            session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
+        cookie = session.cookies.get_dict()
+         
+        headers = {
+            "Content-Type": "application/json"
+        }
+        # response = requests.get(f'https://gmgn.ai/defi/auth/v1/login_nonce?address={wallet_address}', headers=headers, impersonate="chrome")  
+        response = request_with_retry(f'https://gmgn.ai/defi/auth/v1/login_nonce?address={wallet_address}', headers=headers)
         nonce = response.json()['data']['nonce']  
         return nonce  
-    except requests.RequestException as error:  
+    except Exception as error:  
         print('获取登录nonce失败:', error)  
         raise  
   
@@ -49,12 +89,16 @@ def login(message, signature):
     }  
     print('发送登录请求:', payload)  
     try:  
-        response = requests.post('https://gmgn.ai/defi/auth/v1/login', json=payload)  
+        headers = {
+            "Content-Type": "application/json"
+        }
+        # response = requests.post('https://gmgn.ai/defi/auth/v1/login', json=payload, headers=headers, impersonate="chrome")  
+        response = request_with_retry('https://gmgn.ai/defi/auth/v1/login', headers=headers, json=payload, method='POST')
         response.raise_for_status()  
         result = response.json()
         print('登录成功')  
         return result
-    except requests.RequestException as error:  
+    except Exception as error:  
         print('登录失败:', error)
         return {'code': -1, 'message': '登录失败'}
 
@@ -77,7 +121,11 @@ def get_gmgn_token(wallet_address, private_key):
     
 def get_gas_price(chain='sol'):
     try:
-        response = requests.get(f'https://gmgn.ai/defi/quotation/v1/chains/{chain}/gas_price')
+        headers = {
+            "Content-Type": "application/json"
+        }
+        # response = requests.get(f'https://gmgn.ai/defi/quotation/v1/chains/{chain}/gas_price', headers=headers, impersonate="chrome")
+        response = request_with_retry(f'https://gmgn.ai/defi/quotation/v1/chains/{chain}/gas_price', headers=headers)
         response.raise_for_status()
         result = response.json()
         if result['code'] != 0:
@@ -86,16 +134,17 @@ def get_gas_price(chain='sol'):
         else:
             data = result['data']
             return data
-    except requests.RequestException as error:
+    except Exception as error:
         logger.info('获取Gas价格失败:', error)
         return None
 
 def get_token_info(token_address):
     url = f"https://gmgn.ai/defi/quotation/v1/tokens/sol/{token_address}"
     headers = {
-        "Content-Type": "application/json"
+            "Content-Type": "application/json"
     }
-    response = requests.get(url, headers=headers)
+    # response = requests.get(url, headers=headers, impersonate="chrome")
+    response = request_with_retry(url, headers=headers)    
     token_info = response.json()
     logger.info(f"gmgn original token info: {token_info}")
     result = {}
@@ -104,8 +153,13 @@ def get_token_info(token_address):
         creation_timestamp = token_info['data']['token']['creation_timestamp']
         open_timestamp = token_info['data']['token']['open_timestamp']
         result['creation_timestamp'] = int(creation_timestamp) if creation_timestamp is not None else int(open_timestamp)
+        result['open_timestamp'] = int(open_timestamp) if open_timestamp is not None else 0
     except Exception as e:
         result['creation_timestamp'] = 0
+        result['open_timestamp'] = int(open_timestamp) if open_timestamp is not None else 0
+    finally:
+        result['creation_timestamp'] = 0
+        result['open_timestamp'] = 0
     result['holder_count'] = token_info['data']['token']['holder_count']
     try:
         top_10_holder_rate = float(token_info['data']['token']['top_10_holder_rate']) * 100
@@ -125,7 +179,11 @@ def get_token_info(token_address):
     result['net_in_volume_5m'] = token_info['data']['token'].get('net_in_volume_5m', 0)
     result['net_in_volume_1h'] = token_info['data']['token'].get('net_in_volume_1h', 0)
     
-    
+    result['pool_info'] = token_info['data']['token'].get('pool_info', {})
+    result['renounced_mint'] = token_info['data']['token'].get('renounced_mint', 0)
+    result['renounced_freeze_account'] = token_info['data']['token'].get('renounced_freeze_account', 0)
+    result['burn_ratio'] = token_info['data']['token'].get('burn_ratio', 0)
+    result['burn_status'] = token_info['data']['token'].get('burn_status', 0)
     result['dexscr_ad'] = token_info['data']['token'].get('dexscr_ad', 0)
     result['dexscr_update_link'] = token_info['data']['token'].get('dexscr_update_link', 0)
     result['cto_flag'] = token_info['data']['token'].get('cto_flag', 0)
@@ -142,9 +200,11 @@ def get_token_kline(token_address, start_time: datetime, end_time: datetime, res
     end_time_timestamp = int(end_time.timestamp())
     url = f"https://gmgn.ai/defi/quotation/v1/tokens/kline/sol/{token_address}?resolution={resolution}&from={start_time_timestamp}&to={end_time_timestamp}"
     headers = {
-        "Content-Type": "application/json"
+            "Content-Type": "application/json"
     }
-    response = requests.get(url, headers=headers)
+    # response = requests.get(url, headers=headers, impersonate="chrome")
+    response = request_with_retry(url, headers=headers)
+    
     result = response.json()
     if 'code' in result and result['code'] == 0:
         data = result['data']
@@ -239,9 +299,13 @@ def parse_token_info(data, gass_price=None):
     create_time_str = create_time.strftime('%Y-%m-%d %H:%M:%S')
     token_info['create_time'] = create_time_str
     
+    open_time = datetime.fromtimestamp(token_info['open_timestamp'], pytz.timezone(time_zone))
+    open_time_str = open_time.strftime('%Y-%m-%d %H:%M:%S')
+    token_info['open_time'] = open_time_str
+    
     delta_time = (local_time - create_time).total_seconds() / 60
     
-    kline = get_token_kline(token_address, create_time, local_time)
+    # kline = get_token_kline(token_address, create_time, local_time)
     
 
 
@@ -250,7 +314,7 @@ def parse_token_info(data, gass_price=None):
         'wallet_address': wallet_address,
         'token_address': token_address,
         'token_info': token_info,
-        'kline': kline,
+        # 'kline': kline,
         'time': local_time.strftime('%Y-%m-%d %H:%M:%S'),
         'delta_time': delta_time,
         'origin_history': trade_history,
@@ -264,13 +328,20 @@ def parse_token_info(data, gass_price=None):
     if if_filter:
         filter_result = filter_token(trade_info, local_time)
     
-    
-    if filter_result:
-        logger.info(f"Complete all filter, all passed.")
-        return trade_info
-    else:
-        logger.info(f"Faied to pass filter.")
+    if filter_result is None:
+        logger.info(f"Failed to pass filter.")
         return None
+    
+    if isinstance(filter_result, dict):
+        passed = filter_result.get("pass", False)
+        if passed:
+            return {**trade_info, **filter_result}
+        else:
+            return None
+    else:
+        if filter_result:
+            return trade_info
+    return None
 
 
 def follow_wallet(wallet_address, self_wallet_address, token, network='sol', retry=3):
@@ -280,11 +351,12 @@ def follow_wallet(wallet_address, self_wallet_address, token, network='sol', ret
     url = f"https://gmgn.ai/defi/quotation/v1/follow/sol/follow_wallet"
     payload = {"address": wallet_address,
                "network": network}
-    header = {
+    headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
-    response = requests.post(url, headers=header, json=payload)
+    # response = requests.post(url, headers=headers, json=payload, impersonate="chrome")
+    response = request_with_retry(url, headers=headers, json=payload, method='POST')
     result = response.json()
     logger.info(f"Follow wallet result: {result}")
     # {"code":0,"msg":"success","data":{}}
@@ -306,11 +378,13 @@ def unfollow_wallet(wallet_address, self_wallet_address, token, network='sol', r
     url = f"https://gmgn.ai/defi/quotation/v1/follow/sol/unfollow_wallet"
     payload = {"address": wallet_address,
                "network": network}
-    header = {
+    headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
-    response = requests.post(url, headers=header, json=payload)
+    # response = requests.post(url, headers=headers, json=payload, impersonate="chrome")
+    response = request_with_retry(url, headers=headers, json=payload, method='POST')
+    
     result = response.json()
     logger.info(f"Unfollow wallet result: {result}")
     # {"code":0,"msg":"success","data":{}}
@@ -330,11 +404,13 @@ def get_following_wallets(token, self_wallet_address, network='sol', retry=3):
     if token != access_token:
         token = access_token
     url = f"https://gmgn.ai/defi/quotation/v1/follow/{network}/following_wallets?network={network}"
-    header = {
+    headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
-    response = requests.get(url, headers=header)
+    # response = requests.get(url, headers=headers, impersonate="chrome")
+    response = request_with_retry(url, headers=headers)
+    
     result = response.json()
     # logger.info(f"Following wallets: {result}")
     address_list = []
@@ -356,11 +432,13 @@ def get_following_wallets(token, self_wallet_address, network='sol', retry=3):
     
 def tag_wallet_state(token_address, access_token, network='sol'):
     url = f"https://gmgn.ai/defi/quotation/v1/tokens/tag_wallet_count/{network}/{token_address}"
-    header = {
+    headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {access_token}"
     }
-    response = requests.get(url, headers=header)
+    # response = requests.get(url, headers=headers, impersonate="chrome")
+    response = request_with_retry(url, headers=headers)
+    
     result = response.json()
     #     {
     #     "code": 0,
@@ -384,11 +462,13 @@ def tag_wallet_state(token_address, access_token, network='sol'):
     
 def get_pnl_wallets(token, network='sol'):
     url = f"https://gmgn.ai/defi/quotation/v1/rank/{network}/wallets/7d?orderby=realized_profit_7d&direction=desc"
-    header = {
+    headers = {
         "Content-Type": "application",
         "Authorization": f"Bearer {token}"
     }
-    response = requests.get(url, headers=header)
+    # response = requests.get(url, headers=headers, impersonate="chrome")
+    response = request_with_retry(url, headers=headers)
+    
     result = response.json()
     logger.info(f"PNL wallets: {result}")
     return result
@@ -401,12 +481,18 @@ def get_trade_history(token_address, token, self_wallet_address, network='sol', 
     filter_event_ = f"&event={filter_event}" if filter_event is not None else ""
     cursor_ = f"&cursor={quote(cursor)}" if cursor is not None else ""
     url = f"https://gmgn.ai/defi/quotation/v1/trades/{network}/{token_address}?limit=100{cursor_}{filter_event_}&maker=&following=true"
-    header = {
+    headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
-    response = requests.get(url, headers=header)
-    result = response.json()
+    # response = requests.get(url, headers=headers, impersonate="chrome")
+    response = request_with_retry(url, headers=headers)
+    
+    try:
+        result = response.json()
+    except Exception as e:
+        traceback.print_exc()
+        return []
     if 'code' in result and result['code'] == 0:
         history = result['data']['history']
         # logger.info(f"Length of trade history: {len(history)}")
@@ -500,4 +586,5 @@ def parse_history(history, now_time=None):
     result['first_trade_time'] = first_trade_time.strftime('%Y-%m-%d %H:%M:%S')
     return result
 if __name__ == '__main__':
-    token = get_gmgn_token()
+    # token = get_gmgn_token()
+    result = get_token_info("EtWgzbhrs6gUhXthx6zE9Jkwzyp23Q2SDHptaQUapump")
