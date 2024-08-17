@@ -488,11 +488,13 @@ def get_trade_history(token_address, token, self_wallet_address, network='sol', 
     # response = requests.get(url, headers=headers, impersonate="chrome")
     response = request_with_retry(url, headers=headers)
     
-    try:
+    if response is None:
+        access_token = get_gmgn_token(self_wallet_address, private_key=private_key_dict.get(self_wallet_address, None))
+        if retry > 0:
+            return get_trade_history(token_address, access_token, self_wallet_address, network=network, filter_event=filter_event, cursor=cursor, retry=retry-1)
+    else:
         result = response.json()
-    except Exception as e:
-        traceback.print_exc()
-        return []
+    
     if 'code' in result and result['code'] == 0:
         history = result['data']['history']
         # logger.info(f"Length of trade history: {len(history)}")
