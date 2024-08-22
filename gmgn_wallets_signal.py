@@ -9,9 +9,12 @@ import websockets
 from websockets.sync.client import connect
 import uuid
 import uvicorn
+# from curl_cffi.requests import Session
 from utils.gmgn import get_gmgn_token
 from config.conf import (
     channel_id,
+    cookie,
+    session,
     access_token_dict,
     private_key_dict,
     wallet_signal_port,
@@ -60,7 +63,6 @@ class GmgnWebsocketReverse:
         new_tasks = []
 
         forward_task = None
-
         async def create_tasks(this_connection_urls):
             nonlocal new_tasks
             nonlocal forward_task
@@ -69,29 +71,13 @@ class GmgnWebsocketReverse:
             remote_connections = {}
             for wallet_address, websocket_url in this_connection_urls.items():
                 # remote_conn = await websockets.connect(websocket_url)
-                user_agent_header = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-                additional_headers = {
-                    # "Sec-Websocket-Extensions": "permessage-deflate; client_max_window_bits",
-                    # "Sec-Websocket-Key": "FJJM2M8FzeEA8yjg8HuyxQ==",
-                    # "Sec-Websocket-Version": 13,
-                    
-                    # "Host": "ws.gmgn.ai",
-                    # "Connection": "Upgrade",
-                    # "Pragma": "no-cache",
-                    # "Cache-Control": "no-cache",
-                    # "Upgrade": "websocket",
-                    # "Accept-Encoding": "gzip, deflate, br, zstd",
-                    # "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7"
-                    
-                }
-                remote_conn = connect(websocket_url, 
-                                      origin="https://gmgn.ai", 
-                                      server_hostname="ws.gmgn.ai",
-                                    #   additional_headers=additional_headers,
-                                      user_agent_header=user_agent_header
-                                      )
-                # import traceback
-                # traceback.print_stack()
+                global session
+                global cookie
+                r = session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
+                # cookie = session.cookies.get_dict()
+                # session.cookies.set("__cf_bm", cookie["__cf_bm"])
+                
+                remote_conn = session.ws_connect(websocket_url)
                 await subscribe(remote_conn)
                 remote_connections[wallet_address] = remote_conn
                 rev_task = asyncio.create_task(reverse(ws_local, remote_conn))
@@ -125,16 +111,13 @@ class GmgnWebsocketReverse:
                     logger.info(f"New Tasks length: {len(new_tasks)}")
                     tasks = new_tasks
                 # 如果有一个task出现异常，就重新连接
-                # for task in self.tasks:
-                #     if task.done() or task.exception():
-                #         import pdb
-                #
-                #         pdb.set_trace()
-                #         logger.info(f"Task finished or Exception: {task.exception()}")
-                #         self.update_websocket_urls()
+                for task in self.tasks:
+                    if task.done() or task.exception():
+                        logger.info(f"Task finished or Exception: {task.exception()}")
+                        self.update_websocket_urls()
             except Exception as e:
-                # import traceback
-                # traceback.print_exc()
+                import traceback
+                traceback.print_exc()
                 # import pdb; pdb.set_trace()
                 self.update_websocket_urls()
                 continue
@@ -167,27 +150,30 @@ async def subscribe(ws):
         "data": {"chain": "sol"},
     }
     # await ws.send(json.dumps(payload))
-    ws.send(json.dumps(payload))
+    ws.send(bytes(json.dumps(payload), "utf-8"))
     logger.info(f"Subscribed with session ID: {session_id}")
 
 
-async def forward(ws_local: WebSocket, remote_connections):
+async def forward(ws_local, remote_connections):
     try:
         async for message in ws_local.iter_json():
             logger.info(f"Local WebSocket received:{message}")
+            # import pdb; pdb.set_trace()
             message = json.dumps(message)
             for wallet_address, remote_conn in remote_connections.items():
                 # await remote_conn.send(message)
-                remote_conn.send(message)
+                remote_conn.send(bytes(message, "utf-8"))
                 logger.info(f"Remote WebSocket sent:{message}")
     except Exception as e:
         logger.info(f"Forwarding error: {e}")
 
 
-async def reverse(ws_local: WebSocket, ws_b: websockets.WebSocketClientProtocol):
+async def reverse(ws_local: WebSocket, ws_b):
     try:
         # async for message in ws_b:
-        for message in ws_b:
+        # for message in ws_b:
+        while True:
+            message, flags = ws_b.recv()
             message = json.loads(message)
             await ws_local.send_json(message)
             logger.info(f"Local WebSocket sent:{message}")
