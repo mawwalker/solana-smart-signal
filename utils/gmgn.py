@@ -33,9 +33,9 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3):
         headers["Cookie"] = f"__cf_bm={cookie['__cf_bm']}"
         try:
             if method == "GET":
-                response = requests.get(url, headers=headers, impersonate="chrome")
+                response = session.get(url, headers=headers, impersonate="chrome")
             elif method == "POST":
-                response = requests.post(
+                response = session.post(
                     url, headers=headers, json=json, impersonate="chrome"
                 )
             response.raise_for_status()
@@ -55,8 +55,8 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3):
 
 # 步骤1：获取登录nonce
 def get_login_nonce(wallet_address):
+    global cookie
     try:
-        global cookie
         if cookie is None:
             session.get(
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",

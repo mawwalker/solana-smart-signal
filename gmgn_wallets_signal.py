@@ -61,8 +61,12 @@ class GmgnWebsocketReverse:
         this_connection_urls = self.websocket_urls.copy()
         tasks = []
         new_tasks = []
-
+        loop = asyncio.get_event_loop()
         forward_task = None
+        
+        def run_reverse(reverse, ws_local, remote_conn):
+            asyncio.run(reverse(ws_local, remote_conn))
+            
         async def create_tasks(this_connection_urls):
             nonlocal new_tasks
             nonlocal forward_task
@@ -74,13 +78,15 @@ class GmgnWebsocketReverse:
                 global session
                 global cookie
                 r = session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
-                # cookie = session.cookies.get_dict()
-                # session.cookies.set("__cf_bm", cookie["__cf_bm"])
+                cookie = session.cookies.get_dict()
+                session.cookies.set("__cf_bm", cookie["__cf_bm"])
                 
                 remote_conn = session.ws_connect(websocket_url)
-                await subscribe(remote_conn)
+                subscribe(remote_conn)
                 remote_connections[wallet_address] = remote_conn
-                rev_task = asyncio.create_task(reverse(ws_local, remote_conn))
+                # rev_task = asyncio.create_task(reverse(ws_local, remote_conn))
+                # 通过线程来创建task
+                rev_task = threading.Thread(target=run_reverse, args=(reverse, ws_local, remote_conn)).start()
                 new_tasks.append(rev_task)
 
             if forward_task and not forward_task.done():
@@ -96,7 +102,9 @@ class GmgnWebsocketReverse:
                     this_connection_urls = self.websocket_urls.copy()
                     await create_tasks(this_connection_urls)
                     for task in tasks:
-                        task.cancel()
+                        # task.cancel()
+                        # 取消线程
+                        task.join()
                         del task
                     # await asyncio.gather(*new_tasks)
                     logger.info(f"New Tasks length: {len(new_tasks)}")
@@ -105,16 +113,29 @@ class GmgnWebsocketReverse:
                 if len(new_tasks) == 0:
                     await create_tasks(this_connection_urls)
                     for task in tasks:
-                        task.cancel()
+                        # task.cancel()
+                        task.join()
                         del task
                     # await asyncio.gather(*new_tasks)
                     logger.info(f"New Tasks length: {len(new_tasks)}")
                     tasks = new_tasks
                 # 如果有一个task出现异常，就重新连接
                 for task in self.tasks:
-                    if task.done() or task.exception():
+                    # if task.done() or task.exception():
+                    # 判断线程是否结束
+                    if not task.is_alive():
                         logger.info(f"Task finished or Exception: {task.exception()}")
                         self.update_websocket_urls()
+                if forward_task.done():
+                    logger.info("Forward task done")
+                    await create_tasks(this_connection_urls)
+                    for task in tasks:
+                        # task.cancel()
+                        task.join()
+                        del task
+                    # await asyncio.gather(*new_tasks)
+                    logger.info(f"New Tasks length: {len(new_tasks)}")
+                    tasks = new_tasks
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -141,7 +162,7 @@ class GmgnWebsocketReverse:
         loop.run_forever()
 
 
-async def subscribe(ws):
+def subscribe(ws):
     session_id = str(uuid.uuid4())
     payload = {
         "action": "subscribe",
@@ -173,8 +194,10 @@ async def reverse(ws_local: WebSocket, ws_b):
         # async for message in ws_b:
         # for message in ws_b:
         while True:
+        # for message, flags in ws_b.recv():
             message, flags = ws_b.recv()
             message = json.loads(message)
+            logger.info(f"Remote WebSocket received:{message}")
             await ws_local.send_json(message)
             logger.info(f"Local WebSocket sent:{message}")
     except Exception as e:
