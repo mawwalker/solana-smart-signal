@@ -17,37 +17,37 @@ import nacl.encoding
 import pytz
 from datetime import datetime, timedelta
 from utils.util import filter_token
-from config.conf import cookie
 from config.conf import *
+import config.conf as configuration
 
 
 def request_with_retry(url, headers, json=None, method="GET", retries=3):
     for i in range(retries):
-        global cookie
-        if cookie is None:
-            session.get(
+        if configuration.cookie is None:
+            logger.info(f"cookie is None, get new cookie.")
+            configuration.session.get(
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
                 impersonate="chrome",
             )
-        cookie = session.cookies.get_dict()
-        headers["Cookie"] = f"__cf_bm={cookie['__cf_bm']}"
+            configuration.cookie = configuration.session.cookies.get_dict()
+            headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
         try:
             if method == "GET":
-                response = session.get(url, headers=headers, impersonate="chrome")
+                response = configuration.session.get(url, headers=headers, impersonate="chrome")
             elif method == "POST":
-                response = session.post(
+                response = configuration.session.post(
                     url, headers=headers, json=json, impersonate="chrome"
                 )
             response.raise_for_status()
             return response
         except Exception as e:
             logger.error(f"Failed to request url: {url}, error: {str(e)}, retry: {i}")
-            session.get(
+            configuration.session.get(
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
                 impersonate="chrome",
             )
-            cookie = session.cookies.get_dict()
-            headers["Cookie"] = f"__cf_bm={cookie['__cf_bm']}"
+            configuration.cookie = configuration.session.cookies.get_dict()
+            headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
             if i == retries - 1:
                 return None
             continue
@@ -55,15 +55,7 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3):
 
 # 步骤1：获取登录nonce
 def get_login_nonce(wallet_address):
-    global cookie
     try:
-        if cookie is None:
-            session.get(
-                "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                impersonate="chrome",
-            )
-        cookie = session.cookies.get_dict()
-
         headers = {"Content-Type": "application/json"}
         # response = requests.get(f'https://gmgn.ai/defi/auth/v1/login_nonce?address={wallet_address}', headers=headers, impersonate="chrome")
         response = request_with_retry(
@@ -73,7 +65,7 @@ def get_login_nonce(wallet_address):
         nonce = response.json()["data"]["nonce"]
         return nonce
     except Exception as error:
-        print("获取登录nonce失败:", error)
+        logger.info("获取登录nonce失败:", error)
         raise
 
 
@@ -105,7 +97,7 @@ def login(message, signature):
         "message": message,
         "signature": signature,
     }
-    print("发送登录请求:", payload)
+    logger.info("发送登录请求:", payload)
     try:
         headers = {"Content-Type": "application/json"}
         # response = requests.post('https://gmgn.ai/defi/auth/v1/login', json=payload, headers=headers, impersonate="chrome")
@@ -117,10 +109,10 @@ def login(message, signature):
         )
         response.raise_for_status()
         result = response.json()
-        print("登录成功")
+        logger.info(f"登录成功, 返回结果: {result}")
         return result
     except Exception as error:
-        print("登录失败:", error)
+        logger.info("登录失败:", error)
         return {"code": -1, "message": "登录失败"}
 
 

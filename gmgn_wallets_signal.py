@@ -9,6 +9,7 @@ import websockets
 from websockets.sync.client import connect
 import uuid
 import uvicorn
+from curl_cffi import requests
 # from curl_cffi.requests import Session
 from utils.gmgn import get_gmgn_token
 from config.conf import (
@@ -75,11 +76,23 @@ class GmgnWebsocketReverse:
             remote_connections = {}
             for wallet_address, websocket_url in this_connection_urls.items():
                 # remote_conn = await websockets.connect(websocket_url)
-                global session
-                global cookie
-                r = session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
-                cookie = session.cookies.get_dict()
-                session.cookies.set("__cf_bm", cookie["__cf_bm"])
+                headers = {
+                    "Host": "ws.gmgn.ai",
+                    "Connection": "Upgrade",
+                    "Pragma": "no-cache",
+                    "Cache-Control": "no-cache",
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                    "Upgrade": "websocket",
+                    "Origin": "https://gmgn.ai",
+                    # "Sec-WebSocket-Version": "13",
+                    "Accept-Encoding": "gzip, deflate, br, zstd",
+                    "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+                    "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits"
+                }
+                session = requests.Session(headers=headers)
+                # r = session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
+                # cookie = session.cookies.get_dict()
+                # session.cookies.set("__cf_bm", cookie["__cf_bm"])
                 
                 remote_conn = session.ws_connect(websocket_url)
                 subscribe(remote_conn)
@@ -104,7 +117,7 @@ class GmgnWebsocketReverse:
                     for task in tasks:
                         # task.cancel()
                         # 取消线程
-                        task.join()
+                        # task.join()
                         del task
                     # await asyncio.gather(*new_tasks)
                     logger.info(f"New Tasks length: {len(new_tasks)}")
@@ -114,7 +127,7 @@ class GmgnWebsocketReverse:
                     await create_tasks(this_connection_urls)
                     for task in tasks:
                         # task.cancel()
-                        task.join()
+                        # task.join()
                         del task
                     # await asyncio.gather(*new_tasks)
                     logger.info(f"New Tasks length: {len(new_tasks)}")
@@ -149,7 +162,6 @@ class GmgnWebsocketReverse:
         app.include_router(self.router)
         app_config = uvicorn.Config(app, host="0.0.0.0", port=int(wallet_signal_port))
         server = uvicorn.Server(app_config)
-        loop = asyncio.get_event_loop()
 
         # 启动一个后台线程来运行 _update_websocket_urls 方法
         def websocket_updater():
@@ -195,7 +207,14 @@ async def reverse(ws_local: WebSocket, ws_b):
         # for message in ws_b:
         while True:
         # for message, flags in ws_b.recv():
-            message, flags = ws_b.recv()
+            try:
+                message, flags = ws_b.recv()
+                # bytes -> str
+                # import pdb; pdb.set_trace()
+                message = message.decode("utf-8")
+            except Exception as e:
+                logger.info(f"Receiving error: {e}")
+                continue
             message = json.loads(message)
             logger.info(f"Remote WebSocket received:{message}")
             await ws_local.send_json(message)
