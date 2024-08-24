@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 import threading
+from threading import Event
 from loguru import logger
 from datetime import datetime, timedelta
 from fastapi import FastAPI, WebSocket, HTTPException, APIRouter
@@ -63,13 +64,16 @@ class GmgnWebsocketReverse:
         tasks = []
         new_tasks = []
         forward_task = None
+        reverse_thread_event = Event()
         
-        def run_reverse(reverse, ws_local, remote_conn):
-            asyncio.run(reverse(ws_local, remote_conn))
+        def run_reverse(reverse, ws_local, remote_conn, event):
+            asyncio.run(reverse(ws_local, remote_conn, event))
             
         async def create_tasks(this_connection_urls):
+            nonlocal tasks
             nonlocal new_tasks
             nonlocal forward_task
+            nonlocal reverse_thread_event
 
             new_tasks = []
             remote_connections = {}
@@ -106,11 +110,15 @@ class GmgnWebsocketReverse:
                 remote_connections[wallet_address] = remote_conn
                 # rev_task = asyncio.create_task(reverse(ws_local, remote_conn))
                 # 通过线程来创建task
-                rev_task = threading.Thread(target=run_reverse, args=(reverse, ws_local, remote_conn)).start()
+                reverse_thread_event.set()
+                await asyncio.sleep(0.2)
+                reverse_thread_event.clear()
+                rev_task = threading.Thread(target=run_reverse, args=(reverse, ws_local, remote_conn, reverse_thread_event))
                 new_tasks.append(rev_task)
-
+                rev_task.start()
             if forward_task and not forward_task.done():
                 forward_task.cancel()
+            tasks = [task for task in new_tasks]
             forward_task = asyncio.create_task(forward(ws_local, remote_connections))
             # new_tasks.append(forward_task)
 
@@ -128,43 +136,23 @@ class GmgnWebsocketReverse:
                     logger.info(f"Websocket urls updated, reconnecting...")
                     this_connection_urls = self.websocket_urls.copy()
                     await create_tasks(this_connection_urls)
-                    for task in tasks:
-                        # task.cancel()
-                        # 取消线程
-                        # task.join()
-                        del task
-                    # await asyncio.gather(*new_tasks)
-                    logger.info(f"New Tasks length: {len(new_tasks)}")
-                    tasks = new_tasks
 
-                if len(new_tasks) == 0:
+                if len(tasks) == 0:
+                    logger.info(f"None of the tasks created, creating new tasks...")
                     await create_tasks(this_connection_urls)
-                    for task in tasks:
-                        # task.cancel()
-                        # task.join()
-                        # del task
-                        task = None
-                    # await asyncio.gather(*new_tasks)
-                    logger.info(f"New Tasks length: {len(new_tasks)}")
-                    tasks = new_tasks
-                # 如果有一个task出现异常，就重新连接
-                for task in self.tasks:
-                    # if task.done() or task.exception():
-                    # 判断线程是否结束
-                    if task is None:
-                        logger.info(f"Task finished or Exception: {task.exception()}")
-                        self.update_websocket_urls()
+                # 如果有一个reverse task出现异常，就重新连接
+                for task in tasks:
+                    # if task is None:
+                        # import pdb; pdb.set_trace()
+                    if task.is_alive():
+                        continue
+                    else:
+                        logger.info("One of the reverse tasks is dead, reconnecting...")
+                        await create_tasks(this_connection_urls)
+                        break
                 if forward_task.done():
                     logger.info("Forward task done")
                     await create_tasks(this_connection_urls)
-                    for task in tasks:
-                        # task.cancel()
-                        # task.join()
-                        # del task
-                        task = None
-                    # await asyncio.gather(*new_tasks)
-                    logger.info(f"New Tasks length: {len(new_tasks)}")
-                    tasks = new_tasks
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -217,14 +205,14 @@ async def forward(ws_local, remote_connections):
         logger.info(f"Forwarding error: {e}")
 
 
-async def reverse(ws_local: WebSocket, ws_b):
+async def reverse(ws_local: WebSocket, ws_b, event):
     try:
         retries = 0
         # async for message in ws_b:
         # for message in ws_b:
-        while True:
+        while True and not event.is_set():
         # for message, flags in ws_b.recv():
-            if retries > 10:
+            if retries > 5:
                 logger.info("Reversing retries exceeded, Exiting...")
                 break
             try:
@@ -241,6 +229,7 @@ async def reverse(ws_local: WebSocket, ws_b):
             logger.info(f"Remote WebSocket received:{message}")
             await ws_local.send_json(message)
             logger.info(f"Local WebSocket sent:{message}")
+        logger.info(f"Reverse task done")
     except Exception as e:
         logger.info(f"Reversing error: {e}")
 
