@@ -21,31 +21,50 @@ from config.conf import *
 import config.conf as configuration
 
 
-def request_with_retry(url, headers, json=None, method="GET", retries=3):
+def request_with_retry(url, headers, json=None, method="GET", retries=3, wallet_address=None):
     for i in range(retries):
-        # if configuration.cookie is None:
-        #     logger.info(f"cookie is None, get new cookie.")
-        configuration.session.get(
-            "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-            impersonate="chrome",
-        )
-            # configuration.cookie = configuration.session.cookies.get_dict()
-            # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
-        try:
-            if method == "GET":
-                response = configuration.session.get(url, headers=headers, impersonate="chrome")
-            elif method == "POST":
-                response = configuration.session.post(
-                    url, headers=headers, json=json, impersonate="chrome"
-                )
-            response.raise_for_status()
-            return response
-        except Exception as e:
-            logger.error(f"Failed to request url: {url}, error: {str(e)}, retry: {i}")
+        if wallet_address is None:
             configuration.session.get(
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
                 impersonate="chrome",
             )
+        else:
+            configuration.sessions[wallet_address].get(
+                "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
+                impersonate="chrome",
+            )
+            # configuration.cookie = configuration.session.cookies.get_dict()
+            # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
+        try:
+            if method == "GET":
+                if wallet_address is None:
+                    response = configuration.session.get(url, headers=headers, impersonate="chrome")
+                    
+                else:
+                    response = configuration.sessions[wallet_address].get(url, headers=headers, impersonate="chrome")
+            elif method == "POST":
+                if wallet_address is None:
+                    response = configuration.session.post(
+                        url, headers=headers, json=json, impersonate="chrome"
+                    )
+                else:
+                    response = configuration.sessions[wallet_address].post(
+                        url, headers=headers, json=json, impersonate="chrome"
+                    )
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            logger.error(f"Failed to request url: {url}, error: {str(e)}, retry: {i}")
+            if wallet_address is None:
+                configuration.session.get(
+                    "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
+                    impersonate="chrome",
+                )
+            else:
+                configuration.sessions[wallet_address].get(
+                    "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
+                    impersonate="chrome",
+                )
             # configuration.cookie = configuration.session.cookies.get_dict()
             # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
             if i == retries - 1:
@@ -61,6 +80,7 @@ def get_login_nonce(wallet_address):
         response = request_with_retry(
             f"https://gmgn.ai/defi/auth/v1/login_nonce?address={wallet_address}",
             headers=headers,
+            wallet_address=wallet_address,
         )
         nonce = response.json()["data"]["nonce"]
         return nonce
@@ -92,7 +112,7 @@ def sign_message(message, secret_key):
 
 
 # 步骤4：发送签名
-def login(message, signature):
+def login(message, signature, wallet_address):
     payload = {
         "message": message,
         "signature": signature,
@@ -106,6 +126,7 @@ def login(message, signature):
             headers=headers,
             json=payload,
             method="POST",
+            wallet_address=wallet_address,
         )
         response.raise_for_status()
         result = response.json()
@@ -122,7 +143,7 @@ def get_gmgn_token(wallet_address, private_key):
     nonce = get_login_nonce(wallet_address)
     message = generate_message(nonce, wallet_address)
     signature = sign_message(message, base58.b58decode(private_key))
-    login_result = login(message, signature)
+    login_result = login(message, signature, wallet_address=wallet_address)
     if login_result["code"] == 0:
         access_token = login_result["data"]["access_token"]
     if access_token is None:
@@ -542,7 +563,7 @@ def get_trade_history(
     url = f"https://gmgn.ai/defi/quotation/v1/trades/{network}/{token_address}?limit=100{cursor_}{filter_event_}&maker=&following=true"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     # response = requests.get(url, headers=headers, impersonate="chrome")
-    response = request_with_retry(url, headers=headers)
+    response = request_with_retry(url, headers=headers, wallet_address=self_wallet_address)
 
     if response is None:
         access_token = get_gmgn_token(

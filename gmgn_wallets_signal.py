@@ -75,35 +75,33 @@ class GmgnWebsocketReverse:
             remote_connections = {}
             for wallet_address, websocket_url in this_connection_urls.items():
                 # remote_conn = await websockets.connect(websocket_url)
-                # if configuration.cookie is None:
-                #     logger.info(f"cookie is None, get new cookie.")
-                # configuration.session.get(
-                #     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                #     impersonate="chrome",
-                # )
-                # remote_conn = configuration.session.ws_connect(websocket_url)
+                configuration.sessions[wallet_address].get(
+                    "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
+                    impersonate="chrome",
+                )
+                remote_conn = configuration.sessions[wallet_address].ws_connect(websocket_url)
                 # configuration.cookie = configuration.session.cookies.get_dict()
                 # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
                 # configuration.session.cookies.set("__cf_bm", configuration.cookie["__cf_bm"])
-                headers = {
-                    "Host": "ws.gmgn.ai",
-                    "Connection": "Upgrade",
-                    "Pragma": "no-cache",
-                    "Cache-Control": "no-cache",
-                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                    "Upgrade": "websocket",
-                    "Origin": "https://gmgn.ai",
-                    # "Sec-WebSocket-Version": "13",
-                    # "Accept-Encoding": "gzip, deflate, br, zstd",
-                    # "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-                    # "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits"
-                }
-                session = requests.Session(headers=headers)
-                r = session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
-                cookie = session.cookies.get_dict()
-                session.cookies.set("__cf_bm", cookie["__cf_bm"])
+                # headers = {
+                #     "Host": "ws.gmgn.ai",
+                #     "Connection": "Upgrade",
+                #     "Pragma": "no-cache",
+                #     "Cache-Control": "no-cache",
+                #     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                #     "Upgrade": "websocket",
+                #     "Origin": "https://gmgn.ai",
+                #     # "Sec-WebSocket-Version": "13",
+                #     # "Accept-Encoding": "gzip, deflate, br, zstd",
+                #     # "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+                #     # "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits"
+                # }
+                # session = requests.Session(headers=headers)
+                # r = session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
+                # cookie = session.cookies.get_dict()
+                # session.cookies.set("__cf_bm", cookie["__cf_bm"])
                 
-                remote_conn = session.ws_connect(websocket_url)
+                # remote_conn = session.ws_connect(websocket_url)
                 subscribe(remote_conn)
                 remote_connections[wallet_address] = remote_conn
                 # rev_task = asyncio.create_task(reverse(ws_local, remote_conn))
@@ -137,7 +135,8 @@ class GmgnWebsocketReverse:
                     for task in tasks:
                         # task.cancel()
                         # task.join()
-                        del task
+                        # del task
+                        task = None
                     # await asyncio.gather(*new_tasks)
                     logger.info(f"New Tasks length: {len(new_tasks)}")
                     tasks = new_tasks
@@ -145,7 +144,7 @@ class GmgnWebsocketReverse:
                 for task in self.tasks:
                     # if task.done() or task.exception():
                     # 判断线程是否结束
-                    if not task.is_alive():
+                    if task is None:
                         logger.info(f"Task finished or Exception: {task.exception()}")
                         self.update_websocket_urls()
                 if forward_task.done():
@@ -153,8 +152,9 @@ class GmgnWebsocketReverse:
                     await create_tasks(this_connection_urls)
                     for task in tasks:
                         # task.cancel()
-                        task.join()
-                        del task
+                        # task.join()
+                        # del task
+                        task = None
                     # await asyncio.gather(*new_tasks)
                     logger.info(f"New Tasks length: {len(new_tasks)}")
                     tasks = new_tasks

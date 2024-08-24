@@ -16,11 +16,13 @@ WALLET_ADDRESS_LIST = os.getenv('WALLET_ADDRESS_LIST').split(',')
 access_token_dict = {}
 private_key_dict = {}
 following_wallets_nums = {}
+sessions = {}
 
 for private_key, wallet_address in zip(PRIVATE_KEY_BASE58_LIST, WALLET_ADDRESS_LIST):
     access_token_dict[wallet_address] = None
     private_key_dict[wallet_address] = private_key
     following_wallets_nums[wallet_address] = 0
+    sessions[wallet_address] = requests.Session()
 
 
 bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
