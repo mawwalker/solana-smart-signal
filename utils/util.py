@@ -308,9 +308,9 @@ def filter_token_strategy_2(parsed_result, now_time):
     token_info = parsed_result["token_info"]
     # kline = parsed_result['kline']
     # token_create_time = datetime.strptime(token_info['create_time'], '%Y-%m-%d %H:%M:%S').astimezone(pytz.timezone(time_zone))
-    token_open_time = datetime.strptime(
-        token_info["open_time"], "%Y-%m-%d %H:%M:%S"
-    ).astimezone(pytz.timezone(time_zone))
+    # token_open_time = datetime.strptime(
+    #     token_info["open_time"], "%Y-%m-%d %H:%M:%S"
+    # ).astimezone(pytz.timezone(time_zone))
     launchpad = None
     launchpad_status = 1  # launchpad_status: 0:内盘，1:外盘
     # 钱包数大于等于2，这次信号比上次信号，价格增加了75%

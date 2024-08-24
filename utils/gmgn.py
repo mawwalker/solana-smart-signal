@@ -56,11 +56,13 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3, wallet_
         except Exception as e:
             logger.error(f"Failed to request url: {url}, error: {str(e)}, retry: {i}")
             if wallet_address is None:
+                configuration.session = requests.Session()
                 configuration.session.get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
                     impersonate="chrome",
                 )
             else:
+                configuration.sessions[wallet_address] = requests.Session()
                 configuration.sessions[wallet_address].get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
                     impersonate="chrome",

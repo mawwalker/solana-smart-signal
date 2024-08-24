@@ -10,6 +10,7 @@ from websockets.sync.client import connect
 import uuid
 import uvicorn
 from curl_cffi import requests
+from starlette.websockets import WebSocketState
 # from curl_cffi.requests import Session
 from utils.gmgn import get_gmgn_token
 from config.conf import (
@@ -61,7 +62,6 @@ class GmgnWebsocketReverse:
         this_connection_urls = self.websocket_urls.copy()
         tasks = []
         new_tasks = []
-        loop = asyncio.get_event_loop()
         forward_task = None
         
         def run_reverse(reverse, ws_local, remote_conn):
@@ -116,6 +116,13 @@ class GmgnWebsocketReverse:
 
         while True:
             try:
+                
+                logger.info(f"Local WebSocket state: {ws_local.client_state}")
+                
+                if ws_local.client_state != WebSocketState.CONNECTED:
+                    logger.info("Local WebSocket disconnected, Exiting...")
+                    break
+                
                 # logger.info(f"Websocket urls: {this_connection_urls}, self.websocket_urls: {self.websocket_urls}")
                 if this_connection_urls != self.websocket_urls:
                     logger.info(f"Websocket urls updated, reconnecting...")
@@ -212,10 +219,14 @@ async def forward(ws_local, remote_connections):
 
 async def reverse(ws_local: WebSocket, ws_b):
     try:
+        retries = 0
         # async for message in ws_b:
         # for message in ws_b:
         while True:
         # for message, flags in ws_b.recv():
+            if retries > 10:
+                logger.info("Reversing retries exceeded, Exiting...")
+                break
             try:
                 message, flags = ws_b.recv()
                 # bytes -> str
@@ -223,6 +234,8 @@ async def reverse(ws_local: WebSocket, ws_b):
                 message = message.decode("utf-8")
             except Exception as e:
                 logger.info(f"Receiving error: {e}")
+                await asyncio.sleep(0.5)
+                retries += 1
                 continue
             message = json.loads(message)
             logger.info(f"Remote WebSocket received:{message}")
