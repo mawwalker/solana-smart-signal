@@ -14,13 +14,12 @@ from curl_cffi import requests
 from utils.gmgn import get_gmgn_token
 from config.conf import (
     channel_id,
-    cookie,
-    session,
     access_token_dict,
     private_key_dict,
     wallet_signal_port,
     wallet_signal_route,
 )
+import config.conf as configuration
 
 
 class GmgnWebsocketReverse:
@@ -51,7 +50,7 @@ class GmgnWebsocketReverse:
     async def _update_websocket_urls(self):
         """定时更新websocket urls"""
         while True:
-            time.sleep(60 * 20)
+            time.sleep(60 * 60)
             try:
                 self.update_websocket_urls()
             except Exception as e:
@@ -76,6 +75,16 @@ class GmgnWebsocketReverse:
             remote_connections = {}
             for wallet_address, websocket_url in this_connection_urls.items():
                 # remote_conn = await websockets.connect(websocket_url)
+                # if configuration.cookie is None:
+                #     logger.info(f"cookie is None, get new cookie.")
+                # configuration.session.get(
+                #     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
+                #     impersonate="chrome",
+                # )
+                # remote_conn = configuration.session.ws_connect(websocket_url)
+                # configuration.cookie = configuration.session.cookies.get_dict()
+                # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
+                # configuration.session.cookies.set("__cf_bm", configuration.cookie["__cf_bm"])
                 headers = {
                     "Host": "ws.gmgn.ai",
                     "Connection": "Upgrade",
@@ -85,14 +94,14 @@ class GmgnWebsocketReverse:
                     "Upgrade": "websocket",
                     "Origin": "https://gmgn.ai",
                     # "Sec-WebSocket-Version": "13",
-                    "Accept-Encoding": "gzip, deflate, br, zstd",
-                    "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-                    "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits"
+                    # "Accept-Encoding": "gzip, deflate, br, zstd",
+                    # "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+                    # "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits"
                 }
                 session = requests.Session(headers=headers)
-                # r = session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
-                # cookie = session.cookies.get_dict()
-                # session.cookies.set("__cf_bm", cookie["__cf_bm"])
+                r = session.get("https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price", impersonate="chrome")
+                cookie = session.cookies.get_dict()
+                session.cookies.set("__cf_bm", cookie["__cf_bm"])
                 
                 remote_conn = session.ws_connect(websocket_url)
                 subscribe(remote_conn)

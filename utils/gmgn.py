@@ -23,14 +23,14 @@ import config.conf as configuration
 
 def request_with_retry(url, headers, json=None, method="GET", retries=3):
     for i in range(retries):
-        if configuration.cookie is None:
-            logger.info(f"cookie is None, get new cookie.")
-            configuration.session.get(
-                "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                impersonate="chrome",
-            )
-            configuration.cookie = configuration.session.cookies.get_dict()
-            headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
+        # if configuration.cookie is None:
+        #     logger.info(f"cookie is None, get new cookie.")
+        configuration.session.get(
+            "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
+            impersonate="chrome",
+        )
+            # configuration.cookie = configuration.session.cookies.get_dict()
+            # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
         try:
             if method == "GET":
                 response = configuration.session.get(url, headers=headers, impersonate="chrome")
@@ -46,8 +46,8 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3):
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
                 impersonate="chrome",
             )
-            configuration.cookie = configuration.session.cookies.get_dict()
-            headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
+            # configuration.cookie = configuration.session.cookies.get_dict()
+            # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
             if i == retries - 1:
                 return None
             continue
