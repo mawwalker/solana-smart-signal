@@ -81,7 +81,7 @@ class GmgnWebsocketReverse:
                 # remote_conn = await websockets.connect(websocket_url)
                 configuration.sessions[wallet_address].get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                    impersonate="chrome",
+                    impersonate="chrome120",
                 )
                 remote_conn = configuration.sessions[wallet_address].ws_connect(websocket_url)
                 # configuration.cookie = configuration.session.cookies.get_dict()

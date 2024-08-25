@@ -24,32 +24,33 @@ import config.conf as configuration
 def request_with_retry(url, headers, json=None, method="GET", retries=3, wallet_address=None):
     for i in range(retries):
         if wallet_address is None:
-            configuration.session.get(
+            resp = configuration.session.get(
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                impersonate="chrome",
+                impersonate="chrome120",
             )
         else:
-            configuration.sessions[wallet_address].get(
+            resp = configuration.sessions[wallet_address].get(
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                impersonate="chrome",
+                impersonate="chrome120",
             )
             # configuration.cookie = configuration.session.cookies.get_dict()
             # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
+        logger.info(f"Retry: {i}, get gas price: {resp.text}")
         try:
             if method == "GET":
                 if wallet_address is None:
-                    response = configuration.session.get(url, headers=headers, impersonate="chrome")
+                    response = configuration.session.get(url, headers=headers, impersonate="chrome120")
                     
                 else:
-                    response = configuration.sessions[wallet_address].get(url, headers=headers, impersonate="chrome")
+                    response = configuration.sessions[wallet_address].get(url, headers=headers, impersonate="chrome120")
             elif method == "POST":
                 if wallet_address is None:
                     response = configuration.session.post(
-                        url, headers=headers, json=json, impersonate="chrome"
+                        url, headers=headers, json=json, impersonate="chrome120"
                     )
                 else:
                     response = configuration.sessions[wallet_address].post(
-                        url, headers=headers, json=json, impersonate="chrome"
+                        url, headers=headers, json=json, impersonate="chrome120"
                     )
             response.raise_for_status()
             return response
@@ -57,16 +58,17 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3, wallet_
             logger.error(f"Failed to request url: {url}, error: {str(e)}, retry: {i}")
             if wallet_address is None:
                 configuration.session = requests.Session()
-                configuration.session.get(
+                resp = configuration.session.get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                    impersonate="chrome",
+                    impersonate="chrome120",
                 )
             else:
                 configuration.sessions[wallet_address] = requests.Session()
-                configuration.sessions[wallet_address].get(
+                resp = configuration.sessions[wallet_address].get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                    impersonate="chrome",
+                    impersonate="chrome120",
                 )
+            logger.info(f"Retry: {i}, get gas price: {resp.text}")
             # configuration.cookie = configuration.session.cookies.get_dict()
             # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
             if i == retries - 1:
@@ -78,7 +80,6 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3, wallet_
 def get_login_nonce(wallet_address):
     try:
         headers = {"Content-Type": "application/json"}
-        # response = requests.get(f'https://gmgn.ai/defi/auth/v1/login_nonce?address={wallet_address}', headers=headers, impersonate="chrome")
         response = request_with_retry(
             f"https://gmgn.ai/defi/auth/v1/login_nonce?address={wallet_address}",
             headers=headers,
@@ -122,7 +123,6 @@ def login(message, signature, wallet_address):
     logger.info("发送登录请求:", payload)
     try:
         headers = {"Content-Type": "application/json"}
-        # response = requests.post('https://gmgn.ai/defi/auth/v1/login', json=payload, headers=headers, impersonate="chrome")
         response = request_with_retry(
             "https://gmgn.ai/defi/auth/v1/login",
             headers=headers,
@@ -160,7 +160,6 @@ def get_gmgn_token(wallet_address, private_key):
 def get_gas_price(chain="sol"):
     try:
         headers = {"Content-Type": "application/json"}
-        # response = requests.get(f'https://gmgn.ai/defi/quotation/v1/chains/{chain}/gas_price', headers=headers, impersonate="chrome")
         response = request_with_retry(
             f"https://gmgn.ai/defi/quotation/v1/chains/{chain}/gas_price",
             headers=headers,
@@ -181,7 +180,6 @@ def get_gas_price(chain="sol"):
 def get_token_info(token_address):
     url = f"https://gmgn.ai/defi/quotation/v1/tokens/sol/{token_address}"
     headers = {"Content-Type": "application/json"}
-    # response = requests.get(url, headers=headers, impersonate="chrome")
     response = request_with_retry(url, headers=headers)
     token_info = response.json()
     logger.info(f"gmgn original token info: {token_info}")
@@ -263,7 +261,6 @@ def get_token_kline(
     end_time_timestamp = int(end_time.timestamp())
     url = f"https://gmgn.ai/defi/quotation/v1/tokens/kline/sol/{token_address}?resolution={resolution}&from={start_time_timestamp}&to={end_time_timestamp}"
     headers = {"Content-Type": "application/json"}
-    # response = requests.get(url, headers=headers, impersonate="chrome")
     response = request_with_retry(url, headers=headers)
 
     result = response.json()
@@ -423,7 +420,6 @@ def follow_wallet(wallet_address, self_wallet_address, token, network="sol", ret
     url = f"https://gmgn.ai/defi/quotation/v1/follow/sol/follow_wallet"
     payload = {"address": wallet_address, "network": network}
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    # response = requests.post(url, headers=headers, json=payload, impersonate="chrome")
     response = request_with_retry(url, headers=headers, json=payload, method="POST")
     result = response.json()
     logger.info(f"Follow wallet result: {result}")
@@ -453,7 +449,6 @@ def unfollow_wallet(wallet_address, self_wallet_address, token, network="sol", r
     url = f"https://gmgn.ai/defi/quotation/v1/follow/sol/unfollow_wallet"
     payload = {"address": wallet_address, "network": network}
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    # response = requests.post(url, headers=headers, json=payload, impersonate="chrome")
     response = request_with_retry(url, headers=headers, json=payload, method="POST")
 
     result = response.json()
@@ -483,7 +478,6 @@ def get_following_wallets(token, self_wallet_address, network="sol", retry=3):
         token = access_token
     url = f"https://gmgn.ai/defi/quotation/v1/follow/{network}/following_wallets?network={network}"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    # response = requests.get(url, headers=headers, impersonate="chrome")
     response = request_with_retry(url, headers=headers)
 
     result = response.json()
@@ -512,7 +506,6 @@ def tag_wallet_state(token_address, access_token, network="sol"):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {access_token}",
     }
-    # response = requests.get(url, headers=headers, impersonate="chrome")
     response = request_with_retry(url, headers=headers)
 
     result = response.json()
@@ -540,7 +533,6 @@ def tag_wallet_state(token_address, access_token, network="sol"):
 def get_pnl_wallets(token, network="sol"):
     url = f"https://gmgn.ai/defi/quotation/v1/rank/{network}/wallets/7d?orderby=realized_profit_7d&direction=desc"
     headers = {"Content-Type": "application", "Authorization": f"Bearer {token}"}
-    # response = requests.get(url, headers=headers, impersonate="chrome")
     response = request_with_retry(url, headers=headers)
 
     result = response.json()
@@ -564,7 +556,6 @@ def get_trade_history(
     cursor_ = f"&cursor={quote(cursor)}" if cursor is not None else ""
     url = f"https://gmgn.ai/defi/quotation/v1/trades/{network}/{token_address}?limit=100{cursor_}{filter_event_}&maker=&following=true"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    # response = requests.get(url, headers=headers, impersonate="chrome")
     response = request_with_retry(url, headers=headers, wallet_address=self_wallet_address)
 
     if response is None:
