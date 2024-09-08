@@ -221,29 +221,40 @@ def judge_price_increase(parsed_result, threshold=0.75):
     origin_history = parsed_result["origin_history"]
     the_last_buy = None
     last_second_buy = None
+    first_buy = None
     # 如果钱包数不足2，返回False
     if trade_history["all_wallets"] < 2:
-        return False, None, None, None
-    for trade in origin_history:
+        return False, None, None, None, None
+    # 找到最后一次买入，倒数第二次买入，以及第一次买入
+    for i in range(len(origin_history)):
+        trade = origin_history[i]
         event = trade["event"]
         if event == "sell":
             continue
+        
+        first_buy = trade
+        
         if the_last_buy is None:
             the_last_buy = trade
             continue
         if last_second_buy is None:
             last_second_buy = trade
             continue
-        break
+        
+        
+        
+        
     the_last_buy_price = float(the_last_buy["price_usd"])
 
     last_second_buy_price = float(last_second_buy["price_usd"])
+    
+    first_buy_price = float(first_buy["price_usd"])
 
     if the_last_buy_price > 0 and last_second_buy_price > 0:
         price_increase = the_last_buy_price / last_second_buy_price
         if price_increase >= threshold + 1:
-            return True, price_increase, the_last_buy_price, last_second_buy_price
-    return False, None, None, None
+            return True, price_increase, the_last_buy_price, last_second_buy_price, first_buy_price
+    return False, None, None, None, None
 
 
 def quatify_mc_and_net_change(
@@ -314,9 +325,22 @@ def filter_token_strategy_2(parsed_result, now_time):
     launchpad = None
     launchpad_status = 1  # launchpad_status: 0:内盘，1:外盘
     # 钱包数大于等于2，这次信号比上次信号，价格增加了75%
-    if_price_increase, price_increase, the_last_buy_price, last_second_buy_price = (
+    if_price_increase, price_increase, the_last_buy_price, last_second_buy_price, first_buy_price = (
         judge_price_increase(parsed_result)
     )
+    
+    first_buy_mc = first_buy_price * (
+                token_info["market_cap"] / token_info["price"]
+            ) if first_buy_price is not None else None
+    
+    the_last_buy_mc = the_last_buy_price * (
+        token_info["market_cap"] / token_info["price"]
+    ) if the_last_buy_price is not None else None
+    
+    last_second_buy_mc = last_second_buy_price * (
+        token_info["market_cap"] / token_info["price"]
+    ) if last_second_buy_price is not None else None
+    
 
     # 1. 价格上涨满足条件
     if if_price_increase:
@@ -343,19 +367,19 @@ def filter_token_strategy_2(parsed_result, now_time):
                 f"token: {token_id} passed regular 1.2 Market cap: {token_info['market_cap']}"
             )
             return {"pass": True, "strategy": "1.2"}
-        # 1.3 100k以上300k以下，1min净流入2k-6.5k，5min净流入大于6.5k小于15k，或者5min减去1min的差值大于8.5k
+        # 1.3 100k以上300k以下，1min净流入2k-7k，5min净流入大于6.5k小于15.5k，或者5min减去1min的差值大于12k小于20k
         if quatify_mc_and_net_change(
             parsed_result,
             mc_range=(100000, 300000),
-            net_in_1min_range=(2000, 6500),
-            net_in_5min_range=(6500, 15000),
+            net_in_1min_range=(2000, 7000),
+            net_in_5min_range=(6500, 15500),
             net_in_diff_range=(0, 1e9),
         ) or quatify_mc_and_net_change(
             parsed_result,
             mc_range=(100000, 300000),
             net_in_1min_range=(0, 1e9),
             net_in_5min_range=(0, 1e9),
-            net_in_diff_range=(8500, 1e9),
+            net_in_diff_range=(12000, 20000),
         ):
             logger.info(
                 f"token: {token_id} passed regular 1.3 Market cap: {token_info['market_cap']}"
@@ -409,39 +433,39 @@ def filter_token_strategy_2(parsed_result, now_time):
     logger.info(f"Failed to pass regular 2.")
 
     # 3. 当前是第一个信号，且市值大于300k，满足5min-1min净流入大于10k
-    if (
-        trade_history["all_wallets"] == 1
-        and token_info["market_cap"] >= 300000
-        and token_info["net_in_volume_5m"] - token_info["net_in_volume_1m"] > 10000
-    ):
-        logger.info(
-            f"token: {token_id} passed regular 3. Market cap: {token_info['market_cap']}"
-        )
-        return {"pass": True, "strategy": "3"}
-    logger.info(f"Failed to pass regular 3.")
+    # if (
+    #     trade_history["all_wallets"] == 1
+    #     and token_info["market_cap"] >= 300000
+    #     and token_info["net_in_volume_5m"] - token_info["net_in_volume_1m"] > 10000
+    # ):
+    #     logger.info(
+    #         f"token: {token_id} passed regular 3. Market cap: {token_info['market_cap']}"
+    #     )
+    #     return {"pass": True, "strategy": "3"}
+    # logger.info(f"Failed to pass regular 3.")
 
-    # 4. 100k以下快拉性净流入1min大于3k，5min大于9k,并且5min减去1min的差值大于3.5k.
+    # 4. 100k以下快拉性净流入1min大于3k，5min大于15k,并且5min减去1min的差值大于5k. 并且钱包数只有1个
     if quatify_mc_and_net_change(
         parsed_result,
         mc_range=(0, 100000),
         net_in_1min_range=(3000, 1e9),
-        net_in_5min_range=(9000, 1e9),
-        net_in_diff_range=(3500, 1e9),
-    ):
+        net_in_5min_range=(15000, 1e9),
+        net_in_diff_range=(5000, 1e9),
+    ) and trade_history["all_wallets"] == 1:
         logger.info(
             f"token: {token_id} passed regular 4. Market cap: {token_info['market_cap']}"
         )
         return {"pass": True, "strategy": "4"}
     logger.info(f"Failed to pass regular 4.")
 
-    # 5. 如果当前是第二个信号，第一个信号超过100k，且当前信号相比上一个信号，价格增加了75%以上
-    if trade_history["all_wallets"] == 2:
+    # 5. 如果当前是第二个或者第三个信号都行，第一个信号超过100k，且当前信号相比上一个信号，价格增加了75%以上，5min>0
+    if trade_history["all_wallets"] == 2 or trade_history["all_wallets"] == 3:
         # 计算第一个信号的市值
         if the_last_buy_price is not None and last_second_buy_price is not None:
-            last_second_buy_mc = last_second_buy_price * (
-                token_info["market_cap"] / token_info["price"]
-            )
-            if last_second_buy_mc > 100000 and price_increase >= 1.75:
+            # last_second_buy_mc = last_second_buy_price * (
+            #     token_info["market_cap"] / token_info["price"]
+            # )
+            if first_buy_mc > 100000 and price_increase >= 1.75 and token_info["net_in_volume_5m"] > 0:
                 logger.info(
                     f"token: {token_id} passed regular 5. Market cap: {token_info['market_cap']}"
                 )
@@ -453,7 +477,7 @@ def filter_token_strategy_2(parsed_result, now_time):
         token_info["market_cap"] >= 500000
         and token_info["market_cap"] <= 2000000
         and token_safe_judge(parsed_result)
-        and trade_history["all_wallets"] <= 2
+        # and trade_history["all_wallets"] <= 2
     ):
         # 1. 慢拉性1min<0 5min>7.5k或者0<1min<1k 5min>7.5k
         # 2. 快拉性2k<1min 5min>5k 但是如果5min-1min>13.5k不行
@@ -478,6 +502,30 @@ def filter_token_strategy_2(parsed_result, now_time):
             )
             return {"pass": True, "strategy": "6"}
     logger.info(f"Failed to pass regular 6.")
+    
+    # 7.前一个信号小于60k,后面一个信号大于100k进行推送
+    if the_last_buy_mc is not None and last_second_buy_mc is not None:
+        if last_second_buy_mc < 60000 and the_last_buy_mc > 100000:
+            logger.info(
+                f"token: {token_id} passed regular 7. Market cap: {token_info['market_cap']}"
+            )
+            return {"pass": True, "strategy": "7"}
+    logger.info(f"Failed to pass regular 7.")
+    
+    # 8.市值大于100k小于200k，1min净流入300-1k或者1min净流入小于等于0，5min大于3k小于5k.
+    
+    if quatify_mc_and_net_change(
+        parsed_result,
+        mc_range=(100000, 200000),
+        net_in_1min_range=(300, 1000),
+        net_in_5min_range=(3000, 5000),
+    ):
+        logger.info(
+            f"token: {token_id} passed regular 8. Market cap: {token_info['market_cap']}"
+        )
+        return {"pass": True, "strategy": "8"}
+    logger.info(f"Failed to pass regular 8.")
+    
 
     return {"pass": False, "strategy": "None"}
 
