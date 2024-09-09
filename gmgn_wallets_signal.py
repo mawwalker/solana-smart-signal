@@ -1,7 +1,9 @@
 import asyncio
 import json
 import uuid
+import datetime
 from loguru import logger
+import traceback
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import ConnectionClosedError
@@ -21,6 +23,7 @@ class GmgnWebsocketReverse:
         self.websocket_urls = {}
         self.update_websocket_urls()
         self.remote_connections = {}
+        self.local_connections = {}
 
     def update_websocket_urls(self):
         """更新所有的 websocket URLs"""
@@ -30,25 +33,60 @@ class GmgnWebsocketReverse:
             access_token_dict[wallet_address] = wallet_token
             websocket_url = f"wss://ws.gmgn.ai/stream?tk={wallet_token}"
             self.websocket_urls[wallet_address] = websocket_url
+        self.update_time = datetime.datetime.now()
+        
+    async def _schedule_cancel_all_tasks(self):
+        """定时取消所有任务，用于更新url"""
+        logger.info("Start to schedule cancel all tasks")
+        while True:
+            await asyncio.sleep(60 * 60)
+            try:
+                for connection_id, connection in self.local_connections.items():
+                    tasks = connection["tasks"]
+                    for task in tasks["reverse"]:
+                        task.cancel()
+                    tasks["forward"].cancel()
+                    logger.info(f"Cancelled all tasks for connection {connection_id}")
+            except Exception as e:
+                traceback.print_exc()
 
     async def handle_local_connection(self, local_ws):
         """处理本地 WebSocket 连接，接收并转发消息"""
         logger.info("Local WebSocket connected.")
-        this_connection_urls = self.websocket_urls.copy()
-
-        # 建立远程 WebSocket 连接
-        await self.create_remote_connections(this_connection_urls)
-
-        # 启动正向和反向任务
-        forward_task = asyncio.create_task(self.forward(local_ws))
-        reverse_tasks = [asyncio.create_task(self.reverse(local_ws, wallet_address, remote_ws)) 
-                         for wallet_address, remote_ws in self.remote_connections.items()]
-
-        # 等待所有任务结束
-        await asyncio.gather(forward_task, *reverse_tasks)
+        connection_id = str(uuid.uuid4())
+        while True:
+            try:
+                now_time = datetime.datetime.now()
+                if (now_time - self.update_time).seconds > 60 * 5:
+                    logger.info("Websocket URLs need to be updated, updating now...")
+                    self.update_websocket_urls()
+                this_connection_urls = self.websocket_urls.copy()
+                # 建立远程 WebSocket 连接
+                await self.create_remote_connections(this_connection_urls)
+                # 启动正向和反向任务
+                forward_task = asyncio.create_task(self.forward(local_ws))
+                reverse_tasks = [asyncio.create_task(self.reverse(local_ws, wallet_address, remote_ws)) 
+                                for wallet_address, remote_ws in self.remote_connections.items()]
+                connection_tasks = {
+                    "forward": forward_task,
+                    "reverse": reverse_tasks
+                }
+                self.local_connections[connection_id] = {
+                    "local_ws": local_ws,
+                    "remote_connections": self.remote_connections,
+                    "tasks": connection_tasks
+                }
+                # 等待所有任务结束
+                await asyncio.gather(forward_task, *reverse_tasks)
+                
+                logger.info(f"All tasks finished for connection {connection_id}")
+            except Exception as e:
+                traceback.print_exc()
+                await asyncio.sleep(2)
 
     async def create_remote_connections(self, this_connection_urls):
         """为每个钱包地址创建远程WebSocket连接"""
+        logger.info(f"Creating remote connections for {this_connection_urls.keys()}")
         for wallet_address, websocket_url in this_connection_urls.items():
             try:
                 configuration.sessions[wallet_address].get(
@@ -58,7 +96,6 @@ class GmgnWebsocketReverse:
                 cookie = configuration.sessions[wallet_address].cookies.get_dict()
                 additional_headers = {}
                 additional_headers['Cookie'] = '; '.join([f"{k}={v}" for k, v in cookie.items()])
-                # remote_conn = configuration.sessions[wallet_address].ws_connect(websocket_url)
                 remote_conn = await ws_connect(websocket_url, origin="https://gmgn.ai", additional_headers=additional_headers, user_agent_header=user_agent)
                 self.remote_connections[wallet_address] = remote_conn
                 subscribe(remote_conn)
@@ -68,6 +105,7 @@ class GmgnWebsocketReverse:
 
     async def forward(self, local_ws):
         """处理本地到远程 WebSocket 的消息转发"""
+        logger.info("Forward WebSocket task started")
         try:
             async for message in local_ws:
                 logger.info(f"Local WebSocket received: {message}")
@@ -92,10 +130,13 @@ class GmgnWebsocketReverse:
             logger.error(f"Remote WebSocket ({wallet_address}) connection closed: {str(e)}")
 
 
-async def websocket_server(reverse_proxy):
+async def websocket_server(reverse_proxy: GmgnWebsocketReverse):
     """启动 WebSocket 服务器"""
     async def handler(websocket):
         await reverse_proxy.handle_local_connection(websocket)
+
+    # 创建定时任务_schedule_cancel_all_tasks
+    asyncio.create_task(reverse_proxy._schedule_cancel_all_tasks())
 
     logger.info(f"Starting WebSocket server on ws://localhost:{wallet_signal_port}")
     async with serve(handler, "0.0.0.0", int(wallet_signal_port)):
