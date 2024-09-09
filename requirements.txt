@@ -9,5 +9,4 @@ python-dotenv==1.0.1
 python-telegram-bot==21.3
 pytz==2023.3.post1
 Requests==2.32.3
-solana==0.34.2
-websockets==11.0.3
+websockets==13.0.1

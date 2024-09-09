@@ -11,7 +11,6 @@ from loguru import logger
 import base58
 import traceback
 from urllib.parse import quote
-from solana.rpc.api import Keypair
 import nacl.signing
 import nacl.encoding
 import pytz

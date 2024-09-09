@@ -1,157 +1,109 @@
 import asyncio
 import json
-import time
-import threading
-from threading import Event
-from loguru import logger
-from datetime import datetime, timedelta
-from fastapi import FastAPI, WebSocket, HTTPException, APIRouter
-import websockets
-from websockets.sync.client import connect
 import uuid
-import uvicorn
-from curl_cffi import requests
-from starlette.websockets import WebSocketState
-# from curl_cffi.requests import Session
+from loguru import logger
+from websockets.asyncio.server import serve
+from websockets.asyncio.client import connect as ws_connect
+from websockets.exceptions import ConnectionClosedError
+from config.conf import access_token_dict, private_key_dict
 from utils.gmgn import get_gmgn_token
+import config.conf as configuration
 from config.conf import (
-    channel_id,
+    user_agent,
     access_token_dict,
     private_key_dict,
     wallet_signal_port,
-    wallet_signal_route,
 )
-import config.conf as configuration
 
 
 class GmgnWebsocketReverse:
-    def __init__(self) -> None:
+    def __init__(self):
         self.websocket_urls = {}
         self.update_websocket_urls()
-        self.router = APIRouter()
-        self.router.add_api_websocket_route(
-            f"/{wallet_signal_route}", self.websocket_wallets_signal
-        )
-        self.tasks = []
+        self.remote_connections = {}
 
     def update_websocket_urls(self):
-        # 更新所有的websocket urls
-        logger.info("Updating websocket urls...")
-        global access_token_dict
+        """更新所有的 websocket URLs"""
+        logger.info("Updating websocket URLs...")
         for wallet_address, wallet_token in access_token_dict.items():
-            wallet_token = get_gmgn_token(
-                wallet_address, private_key_dict[wallet_address]
-            )
+            wallet_token = get_gmgn_token(wallet_address, private_key_dict[wallet_address])
             access_token_dict[wallet_address] = wallet_token
             websocket_url = f"wss://ws.gmgn.ai/stream?tk={wallet_token}"
             self.websocket_urls[wallet_address] = websocket_url
-        # logger.info(f"Websocket urls updated: {self.websocket_urls}")
 
-    async def _update_websocket_urls(self):
-        """定时更新websocket urls"""
-        while True:
-            time.sleep(60 * 60)
-            try:
-                self.update_websocket_urls()
-            except Exception as e:
-                logger.error(f"Failed to update websocket urls: {str(e)}")
-
-    async def websocket_wallets_signal(self, ws_local: WebSocket):
-        await ws_local.accept()
+    async def handle_local_connection(self, local_ws):
+        """处理本地 WebSocket 连接，接收并转发消息"""
+        logger.info("Local WebSocket connected.")
         this_connection_urls = self.websocket_urls.copy()
-        tasks = []
-        new_tasks = []
-        forward_task = None
-        reverse_thread_event = Event()
-        
-        def run_reverse(reverse, ws_local, remote_conn, event):
-            asyncio.run(reverse(ws_local, remote_conn, event))
-            
-        async def create_tasks(this_connection_urls):
-            nonlocal tasks
-            nonlocal new_tasks
-            nonlocal forward_task
-            nonlocal reverse_thread_event
 
-            new_tasks = []
-            remote_connections = {}
-            for wallet_address, websocket_url in this_connection_urls.items():
-                # remote_conn = await websockets.connect(websocket_url)
+        # 建立远程 WebSocket 连接
+        await self.create_remote_connections(this_connection_urls)
+
+        # 启动正向和反向任务
+        forward_task = asyncio.create_task(self.forward(local_ws))
+        reverse_tasks = [asyncio.create_task(self.reverse(local_ws, wallet_address, remote_ws)) 
+                         for wallet_address, remote_ws in self.remote_connections.items()]
+
+        # 等待所有任务结束
+        await asyncio.gather(forward_task, *reverse_tasks)
+
+    async def create_remote_connections(self, this_connection_urls):
+        """为每个钱包地址创建远程WebSocket连接"""
+        for wallet_address, websocket_url in this_connection_urls.items():
+            try:
                 configuration.sessions[wallet_address].get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
                     impersonate="chrome120",
                 )
-                remote_conn = configuration.sessions[wallet_address].ws_connect(websocket_url)
+                cookie = configuration.sessions[wallet_address].cookies.get_dict()
+                additional_headers = {}
+                additional_headers['Cookie'] = '; '.join([f"{k}={v}" for k, v in cookie.items()])
+                # remote_conn = configuration.sessions[wallet_address].ws_connect(websocket_url)
+                remote_conn = await ws_connect(websocket_url, origin="https://gmgn.ai", additional_headers=additional_headers, user_agent_header=user_agent)
+                self.remote_connections[wallet_address] = remote_conn
                 subscribe(remote_conn)
-                remote_connections[wallet_address] = remote_conn
-                reverse_thread_event.set()
-                await asyncio.sleep(0.2)
-                reverse_thread_event.clear()
-                rev_task = threading.Thread(target=run_reverse, args=(reverse, ws_local, remote_conn, reverse_thread_event))
-                new_tasks.append(rev_task)
-                rev_task.start()
-            if forward_task and not forward_task.done():
-                forward_task.cancel()
-            tasks = [task for task in new_tasks]
-            forward_task = asyncio.create_task(forward(ws_local, remote_connections))
-
-        while True:
-            try:
-                
-                logger.info(f"Local WebSocket state: {ws_local.client_state}")
-                
-                if ws_local.client_state != WebSocketState.CONNECTED:
-                    logger.info("Local WebSocket disconnected, Exiting...")
-                    break
-                
-                # logger.info(f"Websocket urls: {this_connection_urls}, self.websocket_urls: {self.websocket_urls}")
-                if this_connection_urls != self.websocket_urls:
-                    logger.info(f"Websocket urls updated, reconnecting...")
-                    this_connection_urls = self.websocket_urls.copy()
-                    await create_tasks(this_connection_urls)
-
-                if len(tasks) == 0:
-                    logger.info(f"None of the tasks created, creating new tasks...")
-                    await create_tasks(this_connection_urls)
-                # 如果有一个reverse task出现异常，就重新连接
-                for task in tasks:
-                    # if task is None:
-                        # import pdb; pdb.set_trace()
-                    if task.is_alive():
-                        continue
-                    else:
-                        logger.info("One of the reverse tasks is dead, reconnecting...")
-                        await create_tasks(this_connection_urls)
-                        break
-                if forward_task.done():
-                    logger.info("Forward task done")
-                    await create_tasks(this_connection_urls)
+                logger.info(f"Connected to remote WebSocket ({wallet_address})")
             except Exception as e:
-                import traceback
-                traceback.print_exc()
+                logger.error(f"Failed to connect to {websocket_url}: {str(e)}")
+
+    async def forward(self, local_ws):
+        """处理本地到远程 WebSocket 的消息转发"""
+        try:
+            async for message in local_ws:
+                logger.info(f"Local WebSocket received: {message}")
                 # import pdb; pdb.set_trace()
-                self.update_websocket_urls()
-                continue
-            await asyncio.sleep(3)
+                message_json = json.dumps(message) if isinstance(message, dict) else message
+                for wallet_address, remote_conn in self.remote_connections.items():
+                    await remote_conn.send(message_json)
+                    logger.info(f"Forwarded message to remote WebSocket ({wallet_address}): {message_json}")
+        except ConnectionClosedError as e:
+            logger.error(f"Local WebSocket connection closed: {str(e)}")
 
-    def run_server(self):
-        app = FastAPI()
-        app.include_router(self.router)
-        app_config = uvicorn.Config(app, host="0.0.0.0", port=int(wallet_signal_port))
-        server = uvicorn.Server(app_config)
-
-        # 启动一个后台线程来运行 _update_websocket_urls 方法
-        def websocket_updater():
-            asyncio.run(self._update_websocket_urls())
-
-        threading.Thread(target=websocket_updater, daemon=True).start()
-
-        loop = asyncio.get_event_loop()
-        loop.create_task(server.serve())
-        loop.run_forever()
+    async def reverse(self, local_ws, wallet_address, remote_conn):
+        """处理远程到本地 WebSocket 的消息转发"""
+        logger.info(f"Reverse WebSocket task started for {wallet_address}")
+        try:
+            async for message in remote_conn:
+                logger.info(f"Remote WebSocket ({wallet_address}) received: {message}")
+                message_json = json.loads(message)
+                await local_ws.send(json.dumps(message_json))
+                logger.info(f"Sent message to local WebSocket: {message_json}")
+        except ConnectionClosedError as e:
+            logger.error(f"Remote WebSocket ({wallet_address}) connection closed: {str(e)}")
 
 
-def subscribe(ws):
+async def websocket_server(reverse_proxy):
+    """启动 WebSocket 服务器"""
+    async def handler(websocket):
+        await reverse_proxy.handle_local_connection(websocket)
+
+    logger.info(f"Starting WebSocket server on ws://localhost:{wallet_signal_port}")
+    async with serve(handler, "0.0.0.0", int(wallet_signal_port)):
+        await asyncio.Future()  # 保持服务器运行
+
+
+def subscribe(remote_conn):
+    """订阅 WebSocket 频道"""
     session_id = str(uuid.uuid4())
     payload = {
         "action": "subscribe",
@@ -159,54 +111,10 @@ def subscribe(ws):
         "id": session_id,
         "data": {"chain": "sol"},
     }
-    # await ws.send(json.dumps(payload))
-    ws.send(bytes(json.dumps(payload), "utf-8"))
+    asyncio.create_task(remote_conn.send(json.dumps(payload)))
     logger.info(f"Subscribed with session ID: {session_id}")
 
 
-async def forward(ws_local, remote_connections):
-    try:
-        async for message in ws_local.iter_json():
-            logger.info(f"Local WebSocket received:{message}")
-            # import pdb; pdb.set_trace()
-            message = json.dumps(message)
-            for wallet_address, remote_conn in remote_connections.items():
-                # await remote_conn.send(message)
-                remote_conn.send(bytes(message, "utf-8"))
-                logger.info(f"Remote WebSocket sent:{message}")
-    except Exception as e:
-        logger.info(f"Forwarding error: {e}")
-
-
-async def reverse(ws_local: WebSocket, ws_b, event):
-    try:
-        retries = 0
-        # async for message in ws_b:
-        # for message in ws_b:
-        while True and not event.is_set():
-        # for message, flags in ws_b.recv():
-            if retries > 5:
-                logger.info("Reversing retries exceeded, Exiting...")
-                break
-            try:
-                message, flags = ws_b.recv()
-                # bytes -> str
-                # import pdb; pdb.set_trace()
-                message = message.decode("utf-8")
-            except Exception as e:
-                logger.info(f"Receiving error: {e}")
-                await asyncio.sleep(0.5)
-                retries += 1
-                continue
-            message = json.loads(message)
-            logger.info(f"Remote WebSocket received:{message}")
-            await ws_local.send_json(message)
-            logger.info(f"Local WebSocket sent:{message}")
-        logger.info(f"Reverse task done")
-    except Exception as e:
-        logger.info(f"Reversing error: {e}")
-
-
 if __name__ == "__main__":
-    gmgn_reverse = GmgnWebsocketReverse()
-    gmgn_reverse.run_server()
+    reverse_proxy = GmgnWebsocketReverse()
+    asyncio.run(websocket_server(reverse_proxy))

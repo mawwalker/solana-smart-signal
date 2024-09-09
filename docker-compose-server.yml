@@ -20,4 +20,4 @@ services:
       - WALLET_ADDRESS_LIST=${WALLET_ADDRESS_LIST}
       - DBOT_TOKEN=${DBOT_TOKEN}
       - DBOT_WALLET_ID=${DBOT_WALLET_ID}
-    entrypoint: ["python", "gmgn_wallets_signal.py"]
+    entrypoint: ["python", "gmgn_wallets_signal.py", "-X", "faulthandler"]
