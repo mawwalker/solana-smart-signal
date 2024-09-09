@@ -4,6 +4,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+import sys
+from loguru import logger
+
+logger.remove(0)
+logger.add(sys.stderr, level="INFO", colorize=True)
+
 from curl_cffi import requests
 session = requests.Session()
 cookie = None

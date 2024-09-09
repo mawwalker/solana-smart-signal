@@ -47,6 +47,9 @@ class GmgnWebsocketReverse:
                         task.cancel()
                     tasks["forward"].cancel()
                     logger.info(f"Cancelled all tasks for connection {connection_id}")
+                
+                # 清空self.local_connections
+                self.local_connections.clear()
             except Exception as e:
                 traceback.print_exc()
 
@@ -64,12 +67,10 @@ class GmgnWebsocketReverse:
                 # 建立远程 WebSocket 连接
                 await self.create_remote_connections(this_connection_urls)
                 # 启动正向和反向任务
-                forward_task = asyncio.create_task(self.forward(local_ws))
-                reverse_tasks = [asyncio.create_task(self.reverse(local_ws, wallet_address, remote_ws)) 
-                                for wallet_address, remote_ws in self.remote_connections.items()]
                 connection_tasks = {
-                    "forward": forward_task,
-                    "reverse": reverse_tasks
+                    "forward": asyncio.create_task(self.forward(local_ws)),
+                    "reverse": [asyncio.create_task(self.reverse(local_ws, wallet_address, remote_ws)) 
+                                for wallet_address, remote_ws in self.remote_connections.items()]
                 }
                 self.local_connections[connection_id] = {
                     "local_ws": local_ws,
@@ -77,7 +78,14 @@ class GmgnWebsocketReverse:
                     "tasks": connection_tasks
                 }
                 # 等待所有任务结束
-                await asyncio.gather(forward_task, *reverse_tasks)
+                # await asyncio.gather(connection_tasks["forward"], *connection_tasks['reverse'])
+                tasks = connection_tasks["reverse"] + [connection_tasks["forward"]]
+                done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for task in pending:
+                    logger.info(f"Cancel task {task}")
+                    task.cancel()
+                if connection_id in self.local_connections:
+                    self.local_connections.pop(connection_id)
                 
                 logger.info(f"All tasks finished for connection {connection_id}")
             except Exception as e:
