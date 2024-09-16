@@ -1,5 +1,7 @@
 FROM archlinux
 
+COPY mirrorlist /etc/pacman.d/mirrorlist
+
 RUN pacman -Syyu --noconfirm && pacman -S python python-pip --noconfirm
 
 WORKDIR /app

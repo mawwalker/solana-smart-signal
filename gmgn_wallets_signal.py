@@ -15,6 +15,9 @@ from config.conf import (
     access_token_dict,
     private_key_dict,
     wallet_signal_port,
+    impersonate,
+    ja3_text,
+    akamai_text
 )
 
 
@@ -99,7 +102,7 @@ class GmgnWebsocketReverse:
             try:
                 configuration.sessions[wallet_address].get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                    impersonate="chrome120",
+                    # impersonate=impersonate,
                 )
                 cookie = configuration.sessions[wallet_address].cookies.get_dict()
                 additional_headers = {}

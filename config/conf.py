@@ -12,9 +12,14 @@ logger.remove(0)
 logger.add(sys.stderr, level="INFO", colorize=True)
 
 from curl_cffi import requests
-session = requests.Session()
+
 cookie = None
 user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+impersonate = 'chrome125'
+ja3_text = "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,17513-51-18-65281-23-11-10-43-65037-0-16-35-45-27-13-5,25497-29-23-24,0"
+akamai_text = "1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p"
+
+session = requests.Session(ja3=ja3_text, akamai=akamai_text, headers={'User-Agent': user_agent})
 
 # 从环境变量中获取私钥和钱包地址
 
@@ -30,7 +35,7 @@ for private_key, wallet_address in zip(PRIVATE_KEY_BASE58_LIST, WALLET_ADDRESS_L
     access_token_dict[wallet_address] = None
     private_key_dict[wallet_address] = private_key
     following_wallets_nums[wallet_address] = 0
-    sessions[wallet_address] = requests.Session()
+    sessions[wallet_address] = requests.Session(ja3=ja3_text, akamai=akamai_text, headers={'User-Agent': user_agent})
 
 
 bot_token = os.getenv('TELEGRAM_BOT_TOKEN')

@@ -25,12 +25,12 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3, wallet_
         if wallet_address is None:
             resp = configuration.session.get(
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                impersonate="chrome120",
+                # impersonate=impersonate,
             )
         else:
             resp = configuration.sessions[wallet_address].get(
                 "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                impersonate="chrome120",
+                # impersonate=impersonate,
             )
             # configuration.cookie = configuration.session.cookies.get_dict()
             # headers["Cookie"] = f"__cf_bm={configuration.cookie['__cf_bm']}"
@@ -38,18 +38,24 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3, wallet_
         try:
             if method == "GET":
                 if wallet_address is None:
-                    response = configuration.session.get(url, headers=headers, impersonate="chrome120")
+                    response = configuration.session.get(url, headers=headers, 
+                                                         # impersonate=impersonate,
+                                                         )
                     
                 else:
-                    response = configuration.sessions[wallet_address].get(url, headers=headers, impersonate="chrome120")
+                    response = configuration.sessions[wallet_address].get(url, headers=headers, 
+                                                                          # impersonate=impersonate,
+                                                                          )
             elif method == "POST":
                 if wallet_address is None:
                     response = configuration.session.post(
-                        url, headers=headers, json=json, impersonate="chrome120"
+                        url, headers=headers, json=json, 
+                        # impersonate=impersonate,
                     )
                 else:
                     response = configuration.sessions[wallet_address].post(
-                        url, headers=headers, json=json, impersonate="chrome120"
+                        url, headers=headers, json=json, 
+                        # impersonate=impersonate,
                     )
             response.raise_for_status()
             return response
@@ -59,13 +65,13 @@ def request_with_retry(url, headers, json=None, method="GET", retries=3, wallet_
                 configuration.session = requests.Session()
                 resp = configuration.session.get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                    impersonate="chrome120",
+                    # impersonate=impersonate,
                 )
             else:
                 configuration.sessions[wallet_address] = requests.Session()
                 resp = configuration.sessions[wallet_address].get(
                     "https://gmgn.ai/defi/quotation/v1/chains/sol/gas_price",
-                    impersonate="chrome120",
+                    # impersonate=impersonate,
                 )
             logger.info(f"Retry: {i}, get gas price: {resp.text}")
             # configuration.cookie = configuration.session.cookies.get_dict()
